@@ -16,6 +16,7 @@
  *                                      by a failed reversal (transfer_reversal_failed /
  *                                      refund_clawback_failed / transfer_list_failed)
  *   4.  checkMoneyMathInvariants     — flag any paid cleaner payout that doesn't match the locked split
+ *   5.  reconcileBillingMirror       — repair a paying org's mirrored plan columns against Stripe
  *
  * Each job swallows per-item errors so one bad row never stalls the sweep. Everything routes
  * back through the existing idempotent handlers (dispatchStripeEvent, settleCleanerPayout) so
@@ -23,9 +24,15 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
-import { dispatchStripeEvent } from './dispatchStripeEvent';
+import {
+  dispatchStripeEvent,
+  pauseAndCancelMirror,
+  readPlanFromItems,
+  statusToMirror,
+} from './dispatchStripeEvent';
 import { markWebhookProcessed, markWebhookFailed, markWebhookDead } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
+import { LIVE_SUBSCRIPTION_STATUSES, mapSubscriptionStatus } from './orgBilling';
 import { settleSelfPay } from './settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
@@ -44,6 +51,7 @@ import {
   listRecentPaymentIntentsForCustomer,
 } from '@/lib/stripe/reconcile';
 import { listTransfersByGroup, transferGroupFor } from '@/lib/stripe/transfers';
+import { listCustomerSubscriptions, retrieveSubscription } from '@/lib/stripe/billing';
 import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
@@ -1939,4 +1947,399 @@ export async function retryStrandedRefundUnwinds(
   }
 
   return { checked, recovered, stillFailed, manualReview, deferred };
+}
+
+// ── 6) Billing-mirror reconcile (Phase 1b SaaS billing) ─────────────────────────
+export interface BillingMirrorDetail {
+  organizationId: string;
+  subscriptionId: string | null;
+  /** Column → [stored, Stripe] for each field this sweep rewrote. */
+  changed?: Record<string, [unknown, unknown]>;
+  /** True when this org had no subscription id at all and the sweep found one. */
+  adopted?: true;
+  error?: string;
+}
+
+export interface BillingMirrorResult {
+  /** Orgs already pointing at a subscription that were compared to Stripe. */
+  checked: number;
+  repaired: number;
+  /** Orgs with a billing Customer that our row says Stripe is NOT billing. */
+  orphansChecked: number;
+  adopted: number;
+  failed: number;
+  details: BillingMirrorDetail[];
+}
+
+/**
+ * One `subscriptions.retrieve` per paying org per night, and one
+ * `subscriptions.list` per orphan. Both caps are safety rails against an
+ * unbounded organizations table, not pagination: past them the remaining orgs go
+ * unchecked until the cap is raised, which is the right failure for a backstop
+ * (the webhook is still the primary path). Hitting a cap warns.
+ */
+const BILLING_MIRROR_BATCH = 500;
+const BILLING_ORPHAN_BATCH = 200;
+
+/**
+ * The mirrored columns this sweep owns, per spec §16.
+ *
+ * The pause and cancel columns are here because two of them feed
+ * deriveBillingAccess directly: a lost `customer.subscription.updated` for a
+ * RESUME leaves billing_paused_at set and the org frozen, and re-running resume
+ * against an already-unpaused subscription emits no further event, so nothing
+ * else in the system heals it.
+ */
+const BILLING_MIRROR_COLUMNS =
+  'id, subscription_id, subscription_status, plan_tier, billing_period, seat_count, ' +
+  'subscription_cancel_at, billing_paused_at, billing_pause_resumes_at';
+
+/** The orphan pass needs the billing Customer as well: it is the only handle it has. */
+const BILLING_ORPHAN_COLUMNS = `${BILLING_MIRROR_COLUMNS}, stripe_customer_id`;
+
+/**
+ * PostgREST's `not.in` list for the live statuses, built from the one definition
+ * so the orphan pass's filter is the exact complement of the drift pass's `in`.
+ */
+const NOT_LIVE_STATUS_FILTER = `(${LIVE_SUBSCRIPTION_STATUSES.join(',')})`;
+
+/**
+ * A subscription in one of these is over. Adopting one would point an org at a
+ * dead row, and an org that merely opened Checkout and walked away is the
+ * ordinary case, not an incident.
+ */
+const TERMINAL_SUBSCRIPTION_STATUSES: readonly string[] = ['canceled', 'incomplete_expired'];
+
+interface BillingMirrorRow {
+  id: string;
+  subscription_id: string | null;
+  subscription_status: string | null;
+  plan_tier: string | null;
+  billing_period: string | null;
+  seat_count: number | null;
+  subscription_cancel_at: string | null;
+  billing_paused_at: string | null;
+  billing_pause_resumes_at: string | null;
+}
+
+interface BillingOrphanRow extends BillingMirrorRow {
+  stripe_customer_id: string | null;
+}
+
+/**
+ * Two timestamps that name the same instant. Postgres hands back
+ * `2026-09-13T01:02:03.456+00:00` where `Date.toISOString()` produces
+ * `...456Z`, so a string comparison would report drift on every sweep, rewrite
+ * the column, and alert about a webhook that is working fine.
+ */
+function sameInstant(stored: string | null, next: string | null): boolean {
+  if (stored === next) return true;
+  if (!stored || !next) return false;
+  const a = Date.parse(stored);
+  const b = Date.parse(next);
+  return Number.isFinite(a) && Number.isFinite(b) && a === b;
+}
+
+/**
+ * The mirror fields that disagree with Stripe, as an update payload plus a
+ * [stored, Stripe] map for the alert. Shared by both passes so an adopted
+ * subscription is mirrored by exactly the same rules as a drifted one.
+ *
+ * Reads Stripe through the SAME helpers the webhook uses (readPlanFromItems,
+ * statusToMirror, mapSubscriptionStatus, pauseAndCancelMirror) rather than a
+ * second copy: two readers of one subscription that disagree would have this
+ * sweep "repairing" rows the webhook had already written correctly, forever.
+ */
+function billingMirrorDiff(
+  sub: Stripe.Subscription,
+  org: BillingMirrorRow,
+): { update: Record<string, unknown>; changed: Record<string, [unknown, unknown]> } {
+  const update: Record<string, unknown> = {};
+  const changed: Record<string, [unknown, unknown]> = {};
+
+  // Same guard as the webhook: a status that maps to 'none' is a transient or
+  // unrecognized Stripe state, not a fact worth writing over a live row.
+  const nextStatus = statusToMirror(mapSubscriptionStatus(sub.status), org.subscription_status);
+  if (nextStatus && nextStatus !== org.subscription_status) {
+    update.subscription_status = nextStatus;
+    changed.subscription_status = [org.subscription_status, nextStatus];
+  }
+
+  // Null means the subscription's items are not ours to read. Writing nulls over
+  // good plan columns would be worse than leaving them alone.
+  const plan = readPlanFromItems(sub);
+  if (plan) {
+    if (plan.tier !== org.plan_tier) {
+      update.plan_tier = plan.tier;
+      changed.plan_tier = [org.plan_tier, plan.tier];
+    }
+    if (plan.period !== org.billing_period) {
+      update.billing_period = plan.period;
+      changed.billing_period = [org.billing_period, plan.period];
+    }
+    if (plan.seatCount !== org.seat_count) {
+      update.seat_count = plan.seatCount;
+      changed.seat_count = [org.seat_count, plan.seatCount];
+    }
+  }
+
+  // The freeze-bearing columns, by the webhook's own rule. billing_paused_at is
+  // passed the stored stamp so a subscription that is STILL paused keeps its
+  // original "paused since" instead of walking forward every night; a
+  // subscription Stripe has resumed comes back null here, which is the whole
+  // point (the resume webhook can be lost, and re-running resume against an
+  // unpaused subscription emits no further event to heal it with).
+  const pauseCancel = pauseAndCancelMirror(sub, org.billing_paused_at);
+  for (const [column, next] of Object.entries(pauseCancel) as Array<
+    [keyof typeof pauseCancel, string | null]
+  >) {
+    const stored = org[column];
+    if (sameInstant(stored, next)) continue;
+    update[column] = next;
+    changed[column] = [stored, next];
+  }
+
+  return { update, changed };
+}
+
+/**
+ * Nightly: compare each paying organization's mirrored plan columns to Stripe and
+ * repair drift, then find any organization Stripe is billing that our row says it
+ * is not. The customer.subscription.* webhooks are the primary path; this is the
+ * backstop, so database state never depends on a single delivery.
+ *
+ * Two passes, because the two failures look nothing alike in the database:
+ *
+ *   1. DRIFT. Our row says Stripe is billing this org (a subscription id plus a
+ *      live status) and one of the mirrored columns disagrees with Stripe.
+ *      Repair it.
+ *   2. ORPHAN (spec §17, "Checkout completed but webhook late"). The org has a
+ *      billing Customer and a status that is NOT live, so pass 1 cannot see it by
+ *      construction. The customer may well have paid and be sitting behind the
+ *      paywall with nothing self-healing. Ask Stripe what that Customer actually
+ *      has, adopt the newest non-terminal subscription, and mirror it.
+ *
+ * Pass 2 keys on the STATUS, not on `subscription_id IS NULL`, because a canceled
+ * org keeps its old subscription id (the deletion handler clears only the cancel
+ * and pause columns). An org that cancels and then buys again therefore has both
+ * a subscription id and a dead status: a null-id filter would skip it, the drift
+ * filter skips it too, and the customer would pay and stay frozen forever. When
+ * pass 2 adopts a subscription whose id differs from the stored one it overwrites
+ * the id.
+ *
+ * The two filters are exact complements (`subscription_status IN (live)` versus
+ * `NOT IN (live)`, both built from LIVE_SUBSCRIPTION_STATUSES), so no org can
+ * match both, and pass 2 additionally skips any id pass 1 already fetched. One
+ * org is never fetched from Stripe twice in one sweep.
+ *
+ * Every repair and every adoption raises a platform alert. A silent repair hides
+ * a webhook that is not working, and the whole point of a backstop is that you
+ * find out it had to catch something. An org with nothing live at Stripe is the
+ * ordinary abandoned checkout or a genuine cancellation: no write, no alert.
+ *
+ * Never imports src/lib/billing/guard.ts, directly or transitively. Freezing an
+ * organization must stop new work, never stop money already in flight, and this
+ * runs as the service role. guard.test.ts enforces it.
+ */
+export async function reconcileBillingMirror(
+  supabase: SupabaseClient,
+  opts: { batch?: number; orphanBatch?: number } = {},
+): Promise<BillingMirrorResult> {
+  const batch = opts.batch ?? BILLING_MIRROR_BATCH;
+  const orphanBatch = opts.orphanBatch ?? BILLING_ORPHAN_BATCH;
+
+  const details: BillingMirrorDetail[] = [];
+  let repaired = 0;
+  let orphansChecked = 0;
+  let adopted = 0;
+  let failed = 0;
+
+  // ── Pass 1: drift on orgs that already point at a subscription ────────────────
+  // LIVE_SUBSCRIPTION_STATUSES, not a second copy of the same three strings: a
+  // trialing or comped org has nothing at Stripe to compare against, and the one
+  // definition of "Stripe is billing this" already exists.
+  const { data: rows, error: selectError } = await supabase
+    .from('organizations')
+    .select(BILLING_MIRROR_COLUMNS)
+    .not('subscription_id', 'is', null)
+    .in('subscription_status', LIVE_SUBSCRIPTION_STATUSES)
+    .limit(batch);
+
+  if (selectError) {
+    // A failing select silently disables the backstop; say so loudly rather than
+    // reporting a clean "0 checked" sweep.
+    console.error('reconcileBillingMirror: candidate select failed:', selectError);
+  }
+
+  const list = (rows ?? []) as unknown as BillingMirrorRow[];
+  if (list.length >= batch) {
+    console.warn(`reconcileBillingMirror: drift pass hit its cap of ${batch}; some orgs went unchecked.`);
+  }
+
+  // Belt and braces on top of the complementary filters: whatever the database
+  // returned, an org pass 1 has already asked Stripe about is never asked again
+  // in pass 2.
+  const seen = new Set(list.map((org) => org.id));
+
+  for (const org of list) {
+    // Per-org try/catch: one org's Stripe error (a deleted subscription, a rate
+    // limit) must never abort the sweep for every other tenant.
+    try {
+      const subscriptionId = org.subscription_id;
+      if (!subscriptionId) continue;
+
+      const sub = await retrieveSubscription(subscriptionId);
+      const { update, changed } = billingMirrorDiff(sub, org);
+      if (Object.keys(update).length === 0) continue;
+
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update(update)
+        .eq('id', org.id);
+      if (updateError) throw new Error(updateError.message);
+
+      repaired++;
+      details.push({ organizationId: org.id, subscriptionId: sub.id, changed });
+
+      await recordPlatformAlert(supabase, {
+        alert_type: 'billing_mirror_drift_repaired',
+        severity: 'warning',
+        summary:
+          `Repaired the billing mirror for org ${org.id} (${Object.keys(changed).join(', ')}) ` +
+          `from subscription ${sub.id}. A subscription webhook did not land.`,
+        // platform_alerts has no organization_id column, so the org id rides in details.
+        details: { organization_id: org.id, subscription_id: sub.id, changed },
+      });
+    } catch (err) {
+      failed++;
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`reconcileBillingMirror: org ${org.id} failed:`, message);
+      details.push({ organizationId: org.id, subscriptionId: org.subscription_id, error: message });
+    }
+  }
+
+  // ── Pass 2: orphans, an org Stripe is billing that our row says it is not ────
+  // Only an org that reached Checkout or the billing portal has a Customer, so
+  // this set is abandoned checkouts, cancellations, and the rare genuine orphan.
+  // It grows with trial signups that reached the paywall, not with paying
+  // tenants. The status filter is the exact complement of pass 1's, so the two
+  // passes partition the table rather than overlapping on it.
+  const { data: orphanRows, error: orphanError } = await supabase
+    .from('organizations')
+    .select(BILLING_ORPHAN_COLUMNS)
+    .not('stripe_customer_id', 'is', null)
+    .not('subscription_status', 'in', NOT_LIVE_STATUS_FILTER)
+    .limit(orphanBatch);
+
+  if (orphanError) {
+    console.error('reconcileBillingMirror: orphan select failed:', orphanError);
+  }
+
+  const orphans = (orphanRows ?? []) as unknown as BillingOrphanRow[];
+  if (orphans.length >= orphanBatch) {
+    console.warn(
+      `reconcileBillingMirror: orphan pass hit its cap of ${orphanBatch}; some orgs went unchecked.`,
+    );
+  }
+
+  for (const org of orphans) {
+    // Only reachable if the two filters ever stop being complements. Say so:
+    // asking Stripe about one org twice in a sweep is a bug, not a stray cost.
+    if (seen.has(org.id)) {
+      console.warn(
+        `reconcileBillingMirror: org ${org.id} matched both passes; skipping the second lookup.`,
+      );
+      continue;
+    }
+    orphansChecked++;
+
+    try {
+      const customerId = org.stripe_customer_id;
+      if (!customerId) continue;
+
+      const subs = await listCustomerSubscriptions(customerId);
+      // Stripe lists newest created first, so the first non-terminal one is the
+      // current subscription.
+      const found = subs.find((s) => !TERMINAL_SUBSCRIPTION_STATUSES.includes(s.status));
+
+      // Nothing live at Stripe: the ordinary "opened checkout, never finished",
+      // or an org that really did cancel. No write and deliberately no alert.
+      if (!found) continue;
+
+      const { update, changed } = billingMirrorDiff(found, org);
+
+      // A repurchase after cancellation keeps the OLD subscription id on the
+      // row, so adopting means overwriting it, not only filling a null.
+      if (found.id !== org.subscription_id) {
+        update.subscription_id = found.id;
+        changed.subscription_id = [org.subscription_id, found.id];
+      }
+
+      // Already correct: a subscription Stripe has not finished collecting on
+      // (`incomplete`) mirrors to nothing, and the row may simply match. Writing
+      // an empty update and alerting critical would page a human every night.
+      if (Object.keys(update).length === 0) continue;
+
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update(update)
+        .eq('id', org.id);
+      if (updateError) throw new Error(updateError.message);
+
+      adopted++;
+      details.push({ organizationId: org.id, subscriptionId: found.id, changed, adopted: true });
+
+      // Louder than a drift repair: until this ran, a customer who had already
+      // paid was sitting behind the paywall with nothing self-healing.
+      await recordPlatformAlert(supabase, {
+        alert_type: 'billing_subscription_adopted',
+        severity: 'critical',
+        summary:
+          `Org ${org.id} was paying on subscription ${found.id} (${found.status}) while its row ` +
+          `said ${org.subscription_status ?? 'unset'}. A subscription webhook was lost. ` +
+          'Adopted by the nightly sweep.',
+        details: {
+          organization_id: org.id,
+          subscription_id: found.id,
+          previous_subscription_id: org.subscription_id,
+          stored_status: org.subscription_status,
+          stripe_status: found.status,
+          customer_id: customerId,
+          changed,
+        },
+      });
+    } catch (err) {
+      failed++;
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`reconcileBillingMirror: orphan org ${org.id} failed:`, message);
+      details.push({ organizationId: org.id, subscriptionId: null, error: message });
+    }
+  }
+
+  if (failed > 0) {
+    // pg_cron discards this response (migration 067), so a sweep that cannot read
+    // Stripe for some tenant would otherwise fail silently every night forever.
+    await recordPlatformAlert(supabase, {
+      alert_type: 'billing_mirror_reconcile_failed',
+      severity: 'warning',
+      summary:
+        `The nightly billing-mirror reconcile could not check ${failed} of ` +
+        `${list.length + orphansChecked} organization(s).`,
+      details: {
+        failed,
+        checked: list.length,
+        orphansChecked,
+        errors: details.filter((d) => d.error),
+      },
+    });
+  }
+
+  return {
+    checked: list.length,
+    repaired,
+    orphansChecked,
+    adopted,
+    failed,
+    details,
+  };
 }

@@ -2061,4 +2061,481 @@ describe('POST /api/stripe/webhook', () => {
 
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
+
+  // ── Phase 1b: Stripe is the source of truth for what an org bought ───────────
+  //
+  // Everything these assert rides on the subscription payload itself
+  // (items[].price.lookup_key, the seat item's quantity, cancel_at,
+  // pause_collection), so the mirror costs no extra Stripe call.
+
+  const postWebhook = async (eventId: string, type: string, object: Record<string, unknown>) => {
+    const event = {
+      id: eventId,
+      object: 'event',
+      type,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    return callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+  };
+
+  const subscriptionPayload = (over: Record<string, unknown> = {}) => ({
+    id: 'sub_mirror_plan',
+    object: 'subscription',
+    status: 'active',
+    customer: 'cus_unused_here',
+    current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+    metadata: { organization_id: org.organizationId },
+    items: { object: 'list', data: [] },
+    ...over,
+  });
+
+  const planItems = (baseKey: string, seatKey?: string, seatQty?: number) => ({
+    object: 'list',
+    data: [
+      { id: 'si_base', object: 'subscription_item', quantity: 1, price: { id: 'price_base', lookup_key: baseKey } },
+      ...(seatKey
+        ? [{ id: 'si_seat', object: 'subscription_item', quantity: seatQty, price: { id: 'price_seat', lookup_key: seatKey } }]
+        : []),
+    ],
+  });
+
+  const readOrgBilling = async (admin: ReturnType<typeof createTestSupabaseClient>) => {
+    const { data } = await admin
+      .from('organizations')
+      .select(
+        'subscription_id, subscription_status, plan_tier, billing_period, seat_count, ' +
+          'subscription_cancel_at, billing_paused_at, billing_pause_resumes_at, billing_email',
+      )
+      .eq('id', org.organizationId)
+      .single();
+    // The select list is built from a concatenated string, so supabase-js cannot
+    // infer the row shape; assert it.
+    return data as unknown as {
+      subscription_id: string | null;
+      subscription_status: string;
+      plan_tier: string | null;
+      billing_period: string | null;
+      seat_count: number | null;
+      subscription_cancel_at: string | null;
+      billing_paused_at: string | null;
+      billing_pause_resumes_at: string | null;
+      billing_email: string | null;
+    };
+  };
+
+  it('mirrors tier, period, and seats: the seat line carries EXTRAS, not the total', async () => {
+    const admin = createTestSupabaseClient();
+    const eventId = `evt_sub_seats_${crypto.randomUUID().slice(0, 8)}`;
+    const res = await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ items: planItems('growth_annual', 'extra_seat_annual', 4) }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await readOrgBilling(admin);
+    expect(row.plan_tier).toBe('growth');
+    expect(row.billing_period).toBe('annual');
+    // Growth includes 8; the seat line's quantity of 4 is on top of that.
+    expect(row.seat_count).toBe(12);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('a subscription with no seat line means exactly the included seats', async () => {
+    const admin = createTestSupabaseClient();
+    const eventId = `evt_sub_noseat_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ items: planItems('starter_monthly') }),
+    );
+
+    const row = await readOrgBilling(admin);
+    expect(row.plan_tier).toBe('starter');
+    expect(row.billing_period).toBe('monthly');
+    expect(row.seat_count).toBe(3);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('keeps unpaid as unpaid: retries are exhausted, which is not the same as past_due', async () => {
+    const admin = createTestSupabaseClient();
+    const eventId = `evt_sub_unpaid_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ status: 'unpaid', items: planItems('pro_monthly') }),
+    );
+
+    expect((await readOrgBilling(admin)).subscription_status).toBe('unpaid');
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('mirrors cancel_at and pause_collection onto the billing columns', async () => {
+    const admin = createTestSupabaseClient();
+    const cancelAt = Math.floor(Date.now() / 1000) + 20 * 86400;
+    const resumesAt = Math.floor(Date.now() / 1000) + 60 * 86400;
+    const eventId = `evt_sub_pause_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({
+        cancel_at: cancelAt,
+        pause_collection: { behavior: 'void', resumes_at: resumesAt },
+        items: planItems('growth_monthly'),
+      }),
+    );
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_cancel_at).not.toBeNull();
+    expect(new Date(row.subscription_cancel_at!).getTime()).toBe(cancelAt * 1000);
+    expect(row.billing_paused_at).not.toBeNull();
+    expect(new Date(row.billing_pause_resumes_at!).getTime()).toBe(resumesAt * 1000);
+
+    // Still paused on a later update: the stamp is when the pause STARTED, so it
+    // must not walk forward every time Stripe sends another update.
+    const pausedAt = row.billing_paused_at!;
+    const stillPausedId = `evt_sub_stillpaused_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      stillPausedId,
+      'customer.subscription.updated',
+      subscriptionPayload({
+        cancel_at: cancelAt,
+        pause_collection: { behavior: 'void', resumes_at: resumesAt },
+        items: planItems('growth_monthly'),
+      }),
+    );
+    const stillPaused = await readOrgBilling(admin);
+    expect(stillPaused.billing_paused_at).toBe(pausedAt);
+
+    // Resuming clears both pause columns; the app never writes them itself.
+    const resumeId = `evt_sub_resume_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      resumeId,
+      'customer.subscription.updated',
+      subscriptionPayload({ cancel_at: cancelAt, items: planItems('growth_monthly') }),
+    );
+    const after = await readOrgBilling(admin);
+    expect(after.billing_paused_at).toBeNull();
+    expect(after.billing_pause_resumes_at).toBeNull();
+
+    await admin.from('webhook_events').delete().in('id', [eventId, stillPausedId, resumeId]);
+  });
+
+  it('customer.subscription.deleted cancels and clears the forward-looking columns', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({
+        subscription_id: 'sub_gone',
+        subscription_status: 'active',
+        subscription_cancel_at: new Date(Date.now() + 86_400_000).toISOString(),
+        billing_paused_at: new Date().toISOString(),
+        billing_pause_resumes_at: new Date(Date.now() + 86_400_000).toISOString(),
+      })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_del_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_gone',
+      object: 'subscription',
+      status: 'canceled',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('canceled');
+    expect(row.subscription_cancel_at).toBeNull();
+    expect(row.billing_paused_at).toBeNull();
+    expect(row.billing_pause_resumes_at).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('a deleted subscription the org is NOT on leaves a paying customer alone', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_id: 'sub_current', subscription_status: 'active' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_del_other_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_orphan',
+      object: 'subscription',
+      status: 'canceled',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('active');
+    expect(row.subscription_id).toBe('sub_current');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('a never-paid subscription expiring does not cancel an org that is still trialing', async () => {
+    const admin = createTestSupabaseClient();
+    const trialEndsAt = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    await admin
+      .from('organizations')
+      .update({
+        subscription_id: 'sub_never_paid',
+        subscription_status: 'trialing',
+        trial_ends_at: trialEndsAt,
+        subscription_cancel_at: new Date(Date.now() + 86_400_000).toISOString(),
+      })
+      .eq('id', org.organizationId);
+
+    // Stripe expires an incomplete subscription about a day after checkout is
+    // abandoned and fires deleted for it. The ids match, so only the stored
+    // status stands between this org and a frozen trial.
+    const eventId = `evt_sub_expired_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_never_paid',
+      object: 'subscription',
+      status: 'incomplete_expired',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('trialing');
+    // Everything else still mirrors: the stale cancel date is cleared.
+    expect(row.subscription_cancel_at).toBeNull();
+
+    const { data: clock } = await admin
+      .from('organizations')
+      .select('trial_ends_at')
+      .eq('id', org.organizationId)
+      .single();
+    // Postgres hands the timestamp back with a +00:00 offset rather than Z, so
+    // compare the instant, not the spelling.
+    expect(new Date((clock as { trial_ends_at: string }).trial_ends_at).getTime()).toBe(
+      new Date(trialEndsAt).getTime(),
+    );
+
+    const { data: ev } = await admin
+      .from('tenant_subscription_events')
+      .select('payload')
+      .eq('stripe_event_id', eventId);
+    expect(((ev![0] as { payload: Record<string, unknown> }).payload).applied).toBe(false);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('incomplete_expired arriving as an update does not cancel a trialing org either', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_id: null, subscription_status: 'trialing' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_incexp_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ id: 'sub_expiring', status: 'incomplete_expired', items: planItems('starter_monthly') }),
+    );
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('trialing');
+    expect(row.subscription_id).toBe('sub_expiring');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('still cancels an org Stripe was actually billing', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_id: 'sub_paying', subscription_status: 'active' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_realcancel_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_paying',
+      object: 'subscription',
+      status: 'canceled',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    expect((await readOrgBilling(admin)).subscription_status).toBe('canceled');
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('an unrecognized base lookup key leaves the plan columns alone rather than nulling them', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ plan_tier: 'growth', billing_period: 'annual', seat_count: 12 })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_foreign_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({
+        id: 'sub_foreign',
+        status: 'past_due',
+        items: planItems('legacy_grandfathered_plan'),
+      }),
+    );
+
+    const row = await readOrgBilling(admin);
+    // Status still mirrors; what the org bought does not get overwritten with nulls.
+    expect(row.subscription_status).toBe('past_due');
+    expect(row.plan_tier).toBe('growth');
+    expect(row.billing_period).toBe('annual');
+    expect(row.seat_count).toBe(12);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('never writes a none status over an existing one, which would freeze a mid-trial org', async () => {
+    const admin = createTestSupabaseClient();
+    const eventId = `evt_sub_incomplete_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.created',
+      subscriptionPayload({ id: 'sub_incomplete', status: 'incomplete', items: planItems('starter_monthly') }),
+    );
+
+    const row = await readOrgBilling(admin);
+    // The fixture org is trialing. 'incomplete' maps to 'none', and 'none' freezes.
+    expect(row.subscription_status).toBe('trialing');
+    // Everything else still mirrors, so the row is not left stale either.
+    expect(row.subscription_id).toBe('sub_incomplete');
+    expect(row.plan_tier).toBe('starter');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('alerts the platform when a second subscription orphans the one on the row', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('platform_alerts').delete().eq('alert_type', 'billing_subscription_orphaned');
+    await admin
+      .from('organizations')
+      .update({ subscription_id: 'sub_first', subscription_status: 'active' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_second_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.created',
+      subscriptionPayload({ id: 'sub_second', items: planItems('growth_monthly') }),
+    );
+
+    const { data: alerts } = await admin
+      .from('platform_alerts')
+      .select('alert_type, severity, summary, details')
+      .eq('alert_type', 'billing_subscription_orphaned');
+    expect((alerts ?? []).length).toBe(1);
+    const alert = alerts![0] as { summary: string; details: Record<string, unknown> };
+    expect(alert.details.previous_subscription_id).toBe('sub_first');
+    expect(alert.details.new_subscription_id).toBe('sub_second');
+    expect(alert.details.organization_id).toBe(org.organizationId);
+
+    // The mirror still runs: alerting is how a human finds out, not a way to
+    // block the customer who just paid.
+    expect((await readOrgBilling(admin)).subscription_id).toBe('sub_second');
+
+    await admin.from('platform_alerts').delete().eq('alert_type', 'billing_subscription_orphaned');
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('does not alert when the same subscription is updated again', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('platform_alerts').delete().eq('alert_type', 'billing_subscription_orphaned');
+    await admin
+      .from('organizations')
+      .update({ subscription_id: 'sub_same', subscription_status: 'active' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_same_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ id: 'sub_same', items: planItems('growth_monthly') }),
+    );
+
+    const { data: alerts } = await admin
+      .from('platform_alerts')
+      .select('id')
+      .eq('alert_type', 'billing_subscription_orphaned');
+    expect((alerts ?? []).length).toBe(0);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('checkout.session.completed writes an audit row and fills a blank billing email', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('organizations').update({ billing_email: null }).eq('id', org.organizationId);
+
+    const eventId = `evt_cs_${crypto.randomUUID().slice(0, 8)}`;
+    const res = await postWebhook(eventId, 'checkout.session.completed', {
+      id: 'cs_test_1',
+      object: 'checkout.session',
+      mode: 'subscription',
+      amount_total: 9900,
+      currency: 'usd',
+      customer: 'cus_unused_here',
+      subscription: 'sub_from_checkout',
+      customer_details: { email: 'billing@acme.test' },
+      metadata: { organization_id: org.organizationId },
+    });
+    expect(res.status).toBe(200);
+
+    const { data: ev } = await admin
+      .from('tenant_subscription_events')
+      .select('event_type, payload')
+      .eq('stripe_event_id', eventId);
+    expect((ev ?? []).length).toBe(1);
+    const row = ev![0] as { event_type: string; payload: Record<string, unknown> };
+    expect(row.event_type).toBe('checkout.session.completed');
+    expect(row.payload.session_id).toBe('cs_test_1');
+    expect(row.payload.amount_total).toBe(9900);
+
+    expect((await readOrgBilling(admin)).billing_email).toBe('billing@acme.test');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('checkout.session.completed never overwrites a billing email the org chose', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ billing_email: 'chosen@acme.test' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_cs_keep_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'checkout.session.completed', {
+      id: 'cs_test_2',
+      object: 'checkout.session',
+      mode: 'subscription',
+      amount_total: 3900,
+      currency: 'usd',
+      customer: 'cus_unused_here',
+      customer_details: { email: 'stripe@acme.test' },
+      metadata: { organization_id: org.organizationId },
+    });
+
+    expect((await readOrgBilling(admin)).billing_email).toBe('chosen@acme.test');
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
 });

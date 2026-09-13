@@ -22,7 +22,11 @@ import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 import { formatUserName } from '@/lib/formatName';
-import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
+import { LIVE_SUBSCRIPTION_STATUSES, mapSubscriptionStatus } from '@/lib/payments/orgBilling';
+import type { OrgSubscriptionStatus } from '@/lib/billing/access';
+import { PLANS, seatLookupKeyFor, tierFor } from '@/lib/billing/plans';
+import type { BillingPeriod, PlanTier } from '@/lib/billing/plans';
+import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 export async function dispatchStripeEvent(
   supabase: SupabaseClient,
@@ -77,6 +81,13 @@ export async function dispatchStripeEvent(
       break;
     case 'customer.subscription.deleted':
       await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription, event.id);
+      break;
+    case 'checkout.session.completed':
+      await handleCheckoutSessionCompleted(
+        supabase,
+        event.data.object as Stripe.Checkout.Session,
+        event.id,
+      );
       break;
     case 'invoice.payment_succeeded':
     case 'invoice.payment_failed':
@@ -1499,6 +1510,143 @@ async function recordSubscriptionEvent(
   if (error) console.error('recordSubscriptionEvent: failed to audit subscription event:', error);
 }
 
+/** The extra-seat price lines. Anything else with a lookup key is not a seat line. */
+const SEAT_LOOKUP_KEYS: readonly string[] = [seatLookupKeyFor('monthly'), seatLookupKeyFor('annual')];
+
+/** What the subscription's line items say this org bought. */
+export interface MirroredPlan {
+  tier: PlanTier;
+  period: BillingPeriod;
+  seatCount: number;
+}
+
+/**
+ * Read tier, period, and seat count off the subscription's items.
+ * `items.data[].price.lookup_key` rides along on the webhook payload, so this
+ * costs no extra Stripe call.
+ *
+ * Null when nothing on the subscription parses as one of our plan prices: that
+ * subscription was not created by this system, and guessing at its shape would
+ * mean writing nulls over good data.
+ *
+ * Exported for the nightly mirror reconcile (reconcile.ts): the backstop must read
+ * a subscription exactly the way the webhook does, or the two disagree and the
+ * sweep repairs rows that were never wrong.
+ */
+export function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null {
+  let base: { tier: PlanTier; period: BillingPeriod } | null = null;
+  let seatQuantity = 0;
+
+  for (const item of sub.items?.data ?? []) {
+    const key = item.price?.lookup_key ?? '';
+    if (!key) continue;
+    const parsed = tierFor(key);
+    if (parsed) base = parsed;
+    else if (SEAT_LOOKUP_KEYS.includes(key)) seatQuantity = item.quantity ?? 0;
+  }
+
+  if (!base) return null;
+  // The seat LINE carries the extras only, so a subscription with no seat line
+  // is exactly the tier's included seats.
+  return {
+    tier: base.tier,
+    period: base.period,
+    seatCount: PLANS[base.tier].includedSeats + seatQuantity,
+  };
+}
+
+/**
+ * The status to write, or null to leave the stored one alone.
+ *
+ * Two of the mapper's outputs would freeze an organization that is merely
+ * trialing, and both arrive through this dispatcher:
+ *
+ *  - 'none' is where the mapper sends Stripe's initial and unrecognized states,
+ *    and deriveBillingAccess freezes on 'none'. A transient state reported once
+ *    must not freeze a mid-trial org.
+ *  - 'canceled' is where it sends both 'canceled' and 'incomplete_expired'. A
+ *    subscription that never became live FROM OUR SIDE (the stored status is
+ *    still trialing, or none) was an abandoned purchase attempt, not a
+ *    cancellation of service: an incomplete subscription Stripe expires a day
+ *    later would otherwise end the org's trial for it.
+ *
+ * So a cancellation only lands when the row says Stripe was actually billing
+ * this org. Everything else on the mirror still writes either way.
+ *
+ * Exported for the same reason as readPlanFromItems: the nightly reconcile must
+ * apply the identical rule, not a second copy of it.
+ */
+export function statusToMirror(
+  mapped: OrgSubscriptionStatus,
+  storedStatus: string | null,
+): OrgSubscriptionStatus | null {
+  if (mapped === 'none') return null;
+  if (mapped === 'canceled' && !LIVE_SUBSCRIPTION_STATUSES.includes(storedStatus ?? '')) return null;
+  return mapped;
+}
+
+/** A failed mirror is the one thing here a human has to fix, so it alerts rather than only logging. */
+async function alertMirrorFailed(
+  supabase: SupabaseClient,
+  orgId: string,
+  subscriptionId: string,
+  eventType: string,
+  message: string,
+) {
+  console.error(`${eventType}: billing mirror failed for org ${orgId}:`, message);
+  await recordPlatformAlert(supabase, {
+    alert_type: 'billing_mirror_failed',
+    severity: 'critical',
+    summary: `Could not mirror subscription ${subscriptionId} onto org ${orgId}: ${message}`,
+    details: {
+      organization_id: orgId,
+      subscription_id: subscriptionId,
+      event_type: eventType,
+      message,
+    },
+  });
+}
+
+/** The three freeze-bearing columns, exactly as the webhook writes them. */
+export interface PauseCancelMirror {
+  subscription_cancel_at: string | null;
+  billing_paused_at: string | null;
+  billing_pause_resumes_at: string | null;
+}
+
+/**
+ * The pause and scheduled-cancel columns for a subscription.
+ *
+ * Two of these three feed deriveBillingAccess, so getting them wrong freezes a
+ * paying organization or unfreezes a canceled one. Exported for the same reason
+ * as readPlanFromItems and statusToMirror: the nightly reconcile is the backstop
+ * for a lost resume webhook, and a second copy of these rules is exactly how the
+ * backstop and the webhook would start fighting over the same row.
+ *
+ * `storedPausedAt` is the row's current stamp. While the subscription is still
+ * paused it is kept as-is: re-stamping on every later update (or on every
+ * nightly sweep) would make "paused since" walk forward for no reason.
+ */
+export function pauseAndCancelMirror(
+  sub: Stripe.Subscription,
+  storedPausedAt: string | null,
+  now: Date = new Date(),
+): PauseCancelMirror {
+  const pause = sub.pause_collection;
+  return {
+    subscription_cancel_at: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
+    billing_paused_at: pause ? storedPausedAt ?? now.toISOString() : null,
+    billing_pause_resumes_at: pause?.resumes_at
+      ? new Date(pause.resumes_at * 1000).toISOString()
+      : null,
+  };
+}
+
+/**
+ * Stripe is the source of truth for what an organization bought. The purchase
+ * routes mirror optimistically so the UI does not lag; this is what makes the
+ * row correct.
+ */
 async function handleSubscriptionUpsert(
   supabase: SupabaseClient,
   sub: Stripe.Subscription,
@@ -1510,19 +1658,82 @@ async function handleSubscriptionUpsert(
     console.warn(`${eventType}: no matching org for subscription ${sub.id} — skipping`);
     return;
   }
+
+  const { data: existingRow } = await supabase
+    .from('organizations')
+    .select('subscription_id, subscription_status, billing_paused_at')
+    .eq('id', orgId)
+    .maybeSingle();
+  const existing =
+    (existingRow as {
+      subscription_id: string | null;
+      subscription_status: string | null;
+      billing_paused_at: string | null;
+    } | null) ?? null;
+
+  // A DIFFERENT subscription id whose stored status is still live means a second
+  // subscription exists against the same customer: this mirror is about to point
+  // the org at the new one while the old one keeps billing with nothing in our
+  // database referencing it. The checkout route refuses the common case with a
+  // 409; two concurrent checkouts can still slip past that, and the webhook is
+  // the only place the collision is visible. Alert, then mirror anyway, so the
+  // customer is never blocked and a human still finds out.
+  if (
+    existing?.subscription_id &&
+    existing.subscription_id !== sub.id &&
+    LIVE_SUBSCRIPTION_STATUSES.includes(existing.subscription_status ?? '')
+  ) {
+    await recordPlatformAlert(supabase, {
+      alert_type: 'billing_subscription_orphaned',
+      severity: 'critical',
+      summary:
+        `Org ${orgId} now points at subscription ${sub.id}. ` +
+        `${existing.subscription_id} (${existing.subscription_status}) is orphaned and still ` +
+        'billing the customer. Cancel it in Stripe.',
+      details: {
+        organization_id: orgId,
+        previous_subscription_id: existing.subscription_id,
+        previous_subscription_status: existing.subscription_status,
+        new_subscription_id: sub.id,
+        event_type: eventType,
+      },
+    });
+  }
+
   // current_period_end has moved across Stripe API versions; read it defensively.
   const cpe = (sub as unknown as { current_period_end?: number }).current_period_end;
-  await supabase
-    .from('organizations')
-    .update({
-      subscription_id: sub.id,
-      subscription_status: mapSubscriptionStatus(sub.status),
-      subscription_current_period_end: cpe ? new Date(cpe * 1000).toISOString() : null,
-    })
-    .eq('id', orgId);
+  const pause = sub.pause_collection;
+
+  const update: Record<string, unknown> = {
+    subscription_id: sub.id,
+    subscription_current_period_end: cpe ? new Date(cpe * 1000).toISOString() : null,
+    ...pauseAndCancelMirror(sub, existing?.billing_paused_at ?? null),
+  };
+
+  // Both freeze-a-trialing-org cases live in statusToMirror; see its comment.
+  // 'incomplete_expired' reaches this handler as a customer.subscription.updated
+  // and maps to 'canceled', which is the same door the deleted handler guards.
+  const nextStatus = statusToMirror(mapSubscriptionStatus(sub.status), existing?.subscription_status ?? null);
+  if (nextStatus) update.subscription_status = nextStatus;
+
+  const plan = readPlanFromItems(sub);
+  if (plan) {
+    update.plan_tier = plan.tier;
+    update.billing_period = plan.period;
+    update.seat_count = plan.seatCount;
+  }
+
+  const { error } = await supabase.from('organizations').update(update).eq('id', orgId);
+  if (error) await alertMirrorFailed(supabase, orgId, sub.id, eventType, error.message);
+
   await recordSubscriptionEvent(supabase, orgId, stripeEventId, eventType, {
     subscription_id: sub.id,
     stripe_status: sub.status,
+    plan_tier: plan?.tier ?? null,
+    billing_period: plan?.period ?? null,
+    seat_count: plan?.seatCount ?? null,
+    cancel_at: update.subscription_cancel_at,
+    paused: Boolean(pause),
   });
 }
 
@@ -1533,10 +1744,136 @@ async function handleSubscriptionDeleted(
 ) {
   const orgId = await resolveOrgForSubscription(supabase, sub);
   if (!orgId) return;
-  await supabase.from('organizations').update({ subscription_status: 'canceled' }).eq('id', orgId);
+
+  const { data: existingRow } = await supabase
+    .from('organizations')
+    .select('subscription_id, subscription_status')
+    .eq('id', orgId)
+    .maybeSingle();
+  const existing =
+    (existingRow as { subscription_id: string | null; subscription_status: string | null } | null) ??
+    null;
+  const currentId = existing?.subscription_id ?? null;
+
+  // Only the subscription the org is actually on may cancel it. An orphaned
+  // duplicate being cleaned up in the Dashboard must not freeze a customer who
+  // is paying on a different one.
+  if (currentId && currentId !== sub.id) {
+    console.warn(
+      `customer.subscription.deleted: ${sub.id} is not org ${orgId}'s current subscription ` +
+        `(${currentId}); leaving billing state alone.`,
+    );
+    await recordSubscriptionEvent(supabase, orgId, stripeEventId, 'customer.subscription.deleted', {
+      subscription_id: sub.id,
+      current_subscription_id: currentId,
+      applied: false,
+      reason: 'not_the_current_subscription',
+    });
+    return;
+  }
+
+  // Whether the cancellation lands at all: a subscription that never became live
+  // from our side dying is an abandoned purchase attempt, not the end of
+  // service. statusToMirror carries the reasoning.
+  const nextStatus = statusToMirror('canceled', existing?.subscription_status ?? null);
+
+  // Canceled clears the forward-looking columns either way: there is no period
+  // end to cancel at any more, and a subscription that got deleted is not
+  // paused, it is gone.
+  const { error } = await supabase
+    .from('organizations')
+    .update({
+      ...(nextStatus ? { subscription_status: nextStatus } : {}),
+      subscription_cancel_at: null,
+      billing_paused_at: null,
+      billing_pause_resumes_at: null,
+    })
+    .eq('id', orgId);
+  if (error) {
+    await alertMirrorFailed(supabase, orgId, sub.id, 'customer.subscription.deleted', error.message);
+  }
+
+  if (!nextStatus) {
+    console.log(
+      `customer.subscription.deleted: ${sub.id} died while org ${orgId} was ` +
+        `${existing?.subscription_status ?? 'unset'}; not canceling an org that was never billed.`,
+    );
+  }
+
   await recordSubscriptionEvent(supabase, orgId, stripeEventId, 'customer.subscription.deleted', {
     subscription_id: sub.id,
+    applied: Boolean(nextStatus),
+    ...(nextStatus ? {} : { reason: 'never_became_live', stored_status: existing?.subscription_status ?? null }),
   });
+}
+
+/** Resolve the org for a billing Checkout Session: metadata, the subscription, then the Customer. */
+async function resolveOrgForCheckoutSession(
+  supabase: SupabaseClient,
+  session: Stripe.Checkout.Session,
+): Promise<string | null> {
+  const metaOrg = session.metadata?.organization_id;
+  if (metaOrg) return metaOrg;
+
+  const sub = session.subscription;
+  if (sub && typeof sub !== 'string') {
+    const subOrg = (sub as Stripe.Subscription).metadata?.organization_id;
+    if (subOrg) return subOrg;
+  }
+
+  const customerId = idFromExpandable(session.customer as string | { id: string } | null);
+  if (!customerId) return null;
+  const { data } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('stripe_customer_id', customerId)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/**
+ * Audit trail for a completed purchase.
+ *
+ * Fulfillment deliberately stays on customer.subscription.created, which arrives
+ * in the same burst and carries the line items this event cannot see. This
+ * handler exists so the back office can show that a checkout completed, and so
+ * the org gets a billing email if it never had one.
+ */
+async function handleCheckoutSessionCompleted(
+  supabase: SupabaseClient,
+  session: Stripe.Checkout.Session,
+  stripeEventId: string,
+) {
+  // Nothing else in the app opens a Checkout Session, but a mode that is not a
+  // subscription is not ours to audit here.
+  if (session.mode && session.mode !== 'subscription') return;
+
+  const orgId = await resolveOrgForCheckoutSession(supabase, session);
+  if (!orgId) {
+    console.log(`checkout.session.completed: no matching org for session ${session.id}`);
+    return;
+  }
+
+  await recordSubscriptionEvent(supabase, orgId, stripeEventId, 'checkout.session.completed', {
+    session_id: session.id,
+    amount_total: session.amount_total,
+    currency: session.currency,
+    subscription_id: idFromExpandable(session.subscription as string | { id: string } | null),
+  });
+
+  // Checkout is where an org first tells us where to send invoices. Only fill a
+  // blank: an address they set themselves is theirs, not Stripe's to overwrite.
+  const email = session.customer_details?.email ?? null;
+  if (!email) return;
+  const { data } = await supabase
+    .from('organizations')
+    .select('billing_email')
+    .eq('id', orgId)
+    .maybeSingle();
+  const row = data as { billing_email: string | null } | null;
+  if (row && !row.billing_email) {
+    await supabase.from('organizations').update({ billing_email: email }).eq('id', orgId);
+  }
 }
 
 async function handleInvoiceEvent(
