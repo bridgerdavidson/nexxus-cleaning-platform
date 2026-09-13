@@ -6,50 +6,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { createBillingCheckoutSession, resolvePrices } from '@/lib/stripe/billing';
-import { appendBillingEvent, getOrCreateOrgCustomer } from '@/lib/payments/orgBilling';
+import { appendBillingEvent, buildBillingCheckoutSession } from '@/lib/payments/orgBilling';
 import { countSeatsInUse } from '@/lib/billing/seats';
-import { requireAppUrl } from '@/lib/billing/appUrl';
-import { billingTaxEnabled } from '@/lib/billing/flags';
-import {
-  PLANS,
-  lookupKeyFor,
-  seatBounds,
-  seatLookupKeyFor,
-  type BillingPeriod,
-  type PlanTier,
-} from '@/lib/billing/plans';
+import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
 
 export const runtime = 'nodejs';
-
-const TIERS: PlanTier[] = ['starter', 'growth', 'pro'];
-const PERIODS: BillingPeriod[] = ['monthly', 'annual'];
 
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     const organizationId = body?.organization_id;
-    const tier = body?.tier;
-    const period = body?.period;
-    const seatCount = body?.seat_count;
 
     if (typeof organizationId !== 'string' || !organizationId) {
       return NextResponse.json({ error: 'organization_id is required' }, { status: 400 });
     }
-    if (typeof tier !== 'string' || !TIERS.includes(tier as PlanTier)) {
-      return NextResponse.json(
-        { error: 'Choose a plan tier of starter, growth, or pro.' },
-        { status: 400 },
-      );
-    }
-    if (typeof period !== 'string' || !PERIODS.includes(period as BillingPeriod)) {
-      return NextResponse.json(
-        { error: 'Choose a billing period of monthly or annual.' },
-        { status: 400 },
-      );
-    }
-    if (typeof seatCount !== 'number' || !Number.isInteger(seatCount)) {
-      return NextResponse.json({ error: 'seat_count must be a whole number.' }, { status: 400 });
+    const parsed = parsePlanSelection(body);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
     // Owner or admin. Only the owner may change an existing plan; that is the
@@ -59,61 +32,32 @@ export async function POST(request: NextRequest) {
     });
     if (!auth.ok) return auth.response;
 
-    const planTier = tier as PlanTier;
-    const planPeriod = period as BillingPeriod;
-    const bounds = seatBounds(planTier);
+    const { tier, period, seatCount } = parsed.selection;
 
-    if (seatCount < bounds.min) {
-      return NextResponse.json(
-        { error: `${PLANS[planTier].name} includes ${bounds.min} seats, so buy at least ${bounds.min}.` },
-        { status: 400 },
-      );
-    }
-    if (bounds.max != null && seatCount > bounds.max) {
-      return NextResponse.json(
-        { error: `${PLANS[planTier].name} allows at most ${bounds.max} seats. Choose a larger plan.` },
-        { status: 400 },
-      );
-    }
+    const boundsError = seatBoundsError(tier, seatCount);
+    if (boundsError) return NextResponse.json({ error: boundsError }, { status: 400 });
 
-    // Deliberately NOT wrapped in a try/catch that fails open, unlike the invite
-    // route: this decides what the customer is charged, and failing open would
-    // sell a plan with fewer seats than the organization already uses.
+    // Deliberately NOT wrapped in a fail-open catch, unlike the invite route:
+    // this decides what the customer is charged, and failing open would sell a
+    // plan with fewer seats than the organization already uses.
     const seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId);
-    if (seatCount < seatsInUse) {
-      return NextResponse.json(
-        { error: `You have ${seatsInUse} cleaners, so buy at least ${seatsInUse} seats.` },
-        { status: 400 },
-      );
-    }
+    const usageError = seatsInUseError(seatCount, seatsInUse);
+    if (usageError) return NextResponse.json({ error: usageError }, { status: 400 });
 
-    const prices = await resolvePrices();
-    const extras = Math.max(0, seatCount - PLANS[planTier].includedSeats);
-    const lineItems = [
-      { price: prices[lookupKeyFor(planTier, planPeriod)], quantity: 1 },
-      ...(extras > 0 ? [{ price: prices[seatLookupKeyFor(planPeriod)], quantity: extras }] : []),
-    ];
-
-    const customerId = await getOrCreateOrgCustomer(supabaseAdmin, organizationId);
-    const appUrl = requireAppUrl();
-
-    const session = await createBillingCheckoutSession({
-      customerId,
-      lineItems,
+    const { sessionId, checkoutUrl } = await buildBillingCheckoutSession(
+      supabaseAdmin,
       organizationId,
-      automaticTax: billingTaxEnabled(),
-      successUrl: `${appUrl}/admin/settings?section=billing&checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${appUrl}/admin/settings?section=billing&checkout=canceled`,
-    });
+      parsed.selection,
+    );
 
     await appendBillingEvent(supabaseAdmin, organizationId, 'app.checkout_started', {
-      session_id: session.id,
-      tier: planTier,
-      period: planPeriod,
+      session_id: sessionId,
+      tier,
+      period,
       seat_count: seatCount,
     });
 
-    return NextResponse.json({ success: true, data: { checkout_url: session.url } });
+    return NextResponse.json({ success: true, data: { checkout_url: checkoutUrl } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },

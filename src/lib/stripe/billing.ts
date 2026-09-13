@@ -183,3 +183,32 @@ export async function createBillingCheckoutSession(
 
   return stripe.checkout.sessions.create(params);
 }
+
+// ---------------------------------------------------------------------------
+// Plan change (Phase 1b SaaS billing)
+// ---------------------------------------------------------------------------
+
+/**
+ * The subscription as Stripe has it. `items.data[].price.lookup_key` rides along
+ * on a plain retrieve, so reading the current plan needs no extra fetch.
+ */
+export async function retrieveSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+  return getStripe().subscriptions.retrieve(subscriptionId);
+}
+
+/**
+ * One call handles tier up, tier down, seats up, seats down, and the interval
+ * switch. Prorated immediately in both directions, which is what lets us avoid
+ * Subscription Schedules entirely.
+ */
+export async function updateSubscriptionItems(
+  subscriptionId: string,
+  items: Stripe.SubscriptionUpdateParams.Item[],
+  organizationId: string,
+): Promise<Stripe.Subscription> {
+  return getStripe().subscriptions.update(subscriptionId, {
+    items,
+    proration_behavior: 'create_prorations',
+    metadata: { organization_id: organizationId },
+  });
+}

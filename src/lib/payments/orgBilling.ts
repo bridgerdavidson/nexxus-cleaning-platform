@@ -10,7 +10,13 @@ import {
   createStripeSubscription,
   cancelStripeSubscription,
   createBillingPortalSession,
+  createBillingCheckoutSession,
+  resolvePrices,
 } from '@/lib/stripe/billing';
+import { requireAppUrl } from '@/lib/billing/appUrl';
+import { billingTaxEnabled } from '@/lib/billing/flags';
+import { PLANS, lookupKeyFor, seatLookupKeyFor } from '@/lib/billing/plans';
+import type { PlanSelection } from '@/lib/billing/planSelection';
 
 export type { OrgSubscriptionStatus } from '@/lib/billing/access';
 import type { OrgSubscriptionStatus } from '@/lib/billing/access';
@@ -156,4 +162,45 @@ export async function appendBillingEvent(
   // The timeline is forensic, not load-bearing: never fail a billing action
   // because its audit row did not land.
   if (error) console.error(`appendBillingEvent(${eventType}) failed:`, error.message);
+}
+
+export interface BillingCheckoutResult {
+  sessionId: string;
+  /** Stripe types this nullable; a subscription-mode session always has one. */
+  checkoutUrl: string | null;
+}
+
+/**
+ * Open a hosted Checkout Session for a plan selection.
+ *
+ * Shared by POST /api/billing/checkout and POST /api/billing/plan: the plan
+ * route falls back to checkout when the org has no live subscription, so the
+ * client has one entry point for "change my plan" and both paths necessarily
+ * build the same line items and the same return URLs.
+ */
+export async function buildBillingCheckoutSession(
+  supabase: SupabaseClient,
+  organizationId: string,
+  selection: PlanSelection,
+): Promise<BillingCheckoutResult> {
+  const prices = await resolvePrices();
+  const extras = Math.max(0, selection.seatCount - PLANS[selection.tier].includedSeats);
+  const lineItems = [
+    { price: prices[lookupKeyFor(selection.tier, selection.period)], quantity: 1 },
+    ...(extras > 0 ? [{ price: prices[seatLookupKeyFor(selection.period)], quantity: extras }] : []),
+  ];
+
+  const customerId = await getOrCreateOrgCustomer(supabase, organizationId);
+  const appUrl = requireAppUrl();
+
+  const session = await createBillingCheckoutSession({
+    customerId,
+    lineItems,
+    organizationId,
+    automaticTax: billingTaxEnabled(),
+    successUrl: `${appUrl}/admin/settings?section=billing&checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${appUrl}/admin/settings?section=billing&checkout=canceled`,
+  });
+
+  return { sessionId: session.id, checkoutUrl: session.url };
 }
