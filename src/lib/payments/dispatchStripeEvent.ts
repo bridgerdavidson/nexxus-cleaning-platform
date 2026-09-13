@@ -23,6 +23,7 @@ import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 import { formatUserName } from '@/lib/formatName';
 import { LIVE_SUBSCRIPTION_STATUSES, mapSubscriptionStatus } from '@/lib/payments/orgBilling';
+import type { OrgSubscriptionStatus } from '@/lib/billing/access';
 import { PLANS, seatLookupKeyFor, tierFor } from '@/lib/billing/plans';
 import type { BillingPeriod, PlanTier } from '@/lib/billing/plans';
 import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
@@ -1550,6 +1551,33 @@ function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null {
   };
 }
 
+/**
+ * The status to write, or null to leave the stored one alone.
+ *
+ * Two of the mapper's outputs would freeze an organization that is merely
+ * trialing, and both arrive through this dispatcher:
+ *
+ *  - 'none' is where the mapper sends Stripe's initial and unrecognized states,
+ *    and deriveBillingAccess freezes on 'none'. A transient state reported once
+ *    must not freeze a mid-trial org.
+ *  - 'canceled' is where it sends both 'canceled' and 'incomplete_expired'. A
+ *    subscription that never became live FROM OUR SIDE (the stored status is
+ *    still trialing, or none) was an abandoned purchase attempt, not a
+ *    cancellation of service: an incomplete subscription Stripe expires a day
+ *    later would otherwise end the org's trial for it.
+ *
+ * So a cancellation only lands when the row says Stripe was actually billing
+ * this org. Everything else on the mirror still writes either way.
+ */
+function statusToMirror(
+  mapped: OrgSubscriptionStatus,
+  storedStatus: string | null,
+): OrgSubscriptionStatus | null {
+  if (mapped === 'none') return null;
+  if (mapped === 'canceled' && !LIVE_SUBSCRIPTION_STATUSES.includes(storedStatus ?? '')) return null;
+  return mapped;
+}
+
 /** A failed mirror is the one thing here a human has to fix, so it alerts rather than only logging. */
 async function alertMirrorFailed(
   supabase: SupabaseClient,
@@ -1646,12 +1674,11 @@ async function handleSubscriptionUpsert(
       : null,
   };
 
-  // mapSubscriptionStatus collapses Stripe's initial and unrecognized states to
-  // 'none', and deriveBillingAccess freezes on 'none'. Mirroring that would
-  // freeze a mid-trial organization that merely reported a transient state, so
-  // leave the status alone and mirror everything else.
-  const mapped = mapSubscriptionStatus(sub.status);
-  if (mapped !== 'none') update.subscription_status = mapped;
+  // Both freeze-a-trialing-org cases live in statusToMirror; see its comment.
+  // 'incomplete_expired' reaches this handler as a customer.subscription.updated
+  // and maps to 'canceled', which is the same door the deleted handler guards.
+  const nextStatus = statusToMirror(mapSubscriptionStatus(sub.status), existing?.subscription_status ?? null);
+  if (nextStatus) update.subscription_status = nextStatus;
 
   const plan = readPlanFromItems(sub);
   if (plan) {
@@ -1684,10 +1711,13 @@ async function handleSubscriptionDeleted(
 
   const { data: existingRow } = await supabase
     .from('organizations')
-    .select('subscription_id')
+    .select('subscription_id, subscription_status')
     .eq('id', orgId)
     .maybeSingle();
-  const currentId = (existingRow as { subscription_id: string | null } | null)?.subscription_id ?? null;
+  const existing =
+    (existingRow as { subscription_id: string | null; subscription_status: string | null } | null) ??
+    null;
+  const currentId = existing?.subscription_id ?? null;
 
   // Only the subscription the org is actually on may cancel it. An orphaned
   // duplicate being cleaned up in the Dashboard must not freeze a customer who
@@ -1701,17 +1731,23 @@ async function handleSubscriptionDeleted(
       subscription_id: sub.id,
       current_subscription_id: currentId,
       applied: false,
+      reason: 'not_the_current_subscription',
     });
     return;
   }
 
-  // Canceled clears the forward-looking columns: there is no period end to
-  // cancel at any more, and a paused subscription that gets deleted is not
+  // Whether the cancellation lands at all: a subscription that never became live
+  // from our side dying is an abandoned purchase attempt, not the end of
+  // service. statusToMirror carries the reasoning.
+  const nextStatus = statusToMirror('canceled', existing?.subscription_status ?? null);
+
+  // Canceled clears the forward-looking columns either way: there is no period
+  // end to cancel at any more, and a subscription that got deleted is not
   // paused, it is gone.
   const { error } = await supabase
     .from('organizations')
     .update({
-      subscription_status: 'canceled',
+      ...(nextStatus ? { subscription_status: nextStatus } : {}),
       subscription_cancel_at: null,
       billing_paused_at: null,
       billing_pause_resumes_at: null,
@@ -1721,9 +1757,17 @@ async function handleSubscriptionDeleted(
     await alertMirrorFailed(supabase, orgId, sub.id, 'customer.subscription.deleted', error.message);
   }
 
+  if (!nextStatus) {
+    console.log(
+      `customer.subscription.deleted: ${sub.id} died while org ${orgId} was ` +
+        `${existing?.subscription_status ?? 'unset'}; not canceling an org that was never billed.`,
+    );
+  }
+
   await recordSubscriptionEvent(supabase, orgId, stripeEventId, 'customer.subscription.deleted', {
     subscription_id: sub.id,
-    applied: true,
+    applied: Boolean(nextStatus),
+    ...(nextStatus ? {} : { reason: 'never_became_live', stored_status: existing?.subscription_status ?? null }),
   });
 }
 

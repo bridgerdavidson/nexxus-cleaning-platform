@@ -2204,6 +2204,22 @@ describe('POST /api/stripe/webhook', () => {
     expect(row.billing_paused_at).not.toBeNull();
     expect(new Date(row.billing_pause_resumes_at!).getTime()).toBe(resumesAt * 1000);
 
+    // Still paused on a later update: the stamp is when the pause STARTED, so it
+    // must not walk forward every time Stripe sends another update.
+    const pausedAt = row.billing_paused_at!;
+    const stillPausedId = `evt_sub_stillpaused_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      stillPausedId,
+      'customer.subscription.updated',
+      subscriptionPayload({
+        cancel_at: cancelAt,
+        pause_collection: { behavior: 'void', resumes_at: resumesAt },
+        items: planItems('growth_monthly'),
+      }),
+    );
+    const stillPaused = await readOrgBilling(admin);
+    expect(stillPaused.billing_paused_at).toBe(pausedAt);
+
     // Resuming clears both pause columns; the app never writes them itself.
     const resumeId = `evt_sub_resume_${crypto.randomUUID().slice(0, 8)}`;
     await postWebhook(
@@ -2215,7 +2231,7 @@ describe('POST /api/stripe/webhook', () => {
     expect(after.billing_paused_at).toBeNull();
     expect(after.billing_pause_resumes_at).toBeNull();
 
-    await admin.from('webhook_events').delete().in('id', [eventId, resumeId]);
+    await admin.from('webhook_events').delete().in('id', [eventId, stillPausedId, resumeId]);
   });
 
   it('customer.subscription.deleted cancels and clears the forward-looking columns', async () => {
@@ -2269,6 +2285,97 @@ describe('POST /api/stripe/webhook', () => {
     expect(row.subscription_status).toBe('active');
     expect(row.subscription_id).toBe('sub_current');
 
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('a never-paid subscription expiring does not cancel an org that is still trialing', async () => {
+    const admin = createTestSupabaseClient();
+    const trialEndsAt = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    await admin
+      .from('organizations')
+      .update({
+        subscription_id: 'sub_never_paid',
+        subscription_status: 'trialing',
+        trial_ends_at: trialEndsAt,
+        subscription_cancel_at: new Date(Date.now() + 86_400_000).toISOString(),
+      })
+      .eq('id', org.organizationId);
+
+    // Stripe expires an incomplete subscription about a day after checkout is
+    // abandoned and fires deleted for it. The ids match, so only the stored
+    // status stands between this org and a frozen trial.
+    const eventId = `evt_sub_expired_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_never_paid',
+      object: 'subscription',
+      status: 'incomplete_expired',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('trialing');
+    // Everything else still mirrors: the stale cancel date is cleared.
+    expect(row.subscription_cancel_at).toBeNull();
+
+    const { data: clock } = await admin
+      .from('organizations')
+      .select('trial_ends_at')
+      .eq('id', org.organizationId)
+      .single();
+    // Postgres hands the timestamp back with a +00:00 offset rather than Z, so
+    // compare the instant, not the spelling.
+    expect(new Date((clock as { trial_ends_at: string }).trial_ends_at).getTime()).toBe(
+      new Date(trialEndsAt).getTime(),
+    );
+
+    const { data: ev } = await admin
+      .from('tenant_subscription_events')
+      .select('payload')
+      .eq('stripe_event_id', eventId);
+    expect(((ev![0] as { payload: Record<string, unknown> }).payload).applied).toBe(false);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('incomplete_expired arriving as an update does not cancel a trialing org either', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_id: null, subscription_status: 'trialing' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_incexp_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ id: 'sub_expiring', status: 'incomplete_expired', items: planItems('starter_monthly') }),
+    );
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_status).toBe('trialing');
+    expect(row.subscription_id).toBe('sub_expiring');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('still cancels an org Stripe was actually billing', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_id: 'sub_paying', subscription_status: 'active' })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_realcancel_${crypto.randomUUID().slice(0, 8)}`;
+    await postWebhook(eventId, 'customer.subscription.deleted', {
+      id: 'sub_paying',
+      object: 'subscription',
+      status: 'canceled',
+      customer: 'cus_unused_here',
+      metadata: { organization_id: org.organizationId },
+    });
+
+    expect((await readOrgBilling(admin)).subscription_status).toBe('canceled');
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
