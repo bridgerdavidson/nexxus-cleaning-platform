@@ -33,14 +33,28 @@ export async function cancelStripeSubscription(subscriptionId: string): Promise<
   return stripe.subscriptions.cancel(subscriptionId);
 }
 
+/**
+ * A Customer Portal session.
+ *
+ * `configuration` is what makes the portal behave the way the spec requires:
+ * plan changes are turned OFF there (they belong in the app, where the seat
+ * rules live) and the cancellation-reason survey is turned on. Without it Stripe
+ * falls back to the account default configuration, which enforces neither, and
+ * nothing about the session looks wrong from our side. It is REQUIRED rather
+ * than optional for exactly that reason: get it from
+ * resolvePortalConfiguration(), which throws on an account the setup script has
+ * not been run against.
+ */
 export async function createBillingPortalSession(params: {
   customerId: string;
   returnUrl: string;
+  configuration: string;
 }): Promise<Stripe.BillingPortal.Session> {
   const stripe = getStripe();
   return stripe.billingPortal.sessions.create({
     customer: params.customerId,
     return_url: params.returnUrl,
+    configuration: params.configuration,
   });
 }
 

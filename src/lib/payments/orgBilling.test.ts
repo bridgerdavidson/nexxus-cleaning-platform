@@ -12,18 +12,23 @@ const {
   resumeSubscription,
   cancelSubscriptionAtPeriodEnd,
   cancelStripeSubscription,
+  createBillingPortalSession,
+  resolvePortalConfiguration,
 } = vi.hoisted(() => ({
   pauseSubscription: vi.fn(async () => ({ id: 'sub_live', status: 'active' })),
   resumeSubscription: vi.fn(async () => ({ id: 'sub_live', status: 'active' })),
   cancelSubscriptionAtPeriodEnd: vi.fn(async () => ({ id: 'sub_live', status: 'active' })),
   cancelStripeSubscription: vi.fn(async () => ({ id: 'sub_live', status: 'canceled' })),
+  createBillingPortalSession: vi.fn(async () => ({ url: 'https://billing.stripe.test/session' })),
+  resolvePortalConfiguration: vi.fn(async () => 'bpc_ours'),
 }));
 
 vi.mock('@/lib/stripe/billing', () => ({
   createStripeBillingCustomer: vi.fn(),
-  createBillingPortalSession: vi.fn(),
   createBillingCheckoutSession: vi.fn(),
   resolvePrices: vi.fn(),
+  createBillingPortalSession,
+  resolvePortalConfiguration,
   pauseSubscription,
   resumeSubscription,
   cancelSubscriptionAtPeriodEnd,
@@ -32,6 +37,7 @@ vi.mock('@/lib/stripe/billing', () => ({
 
 import {
   cancelOrgSubscription,
+  getOrgPortalLink,
   mapSubscriptionStatus,
   pauseOrgBilling,
   resumeOrgBilling,
@@ -143,6 +149,42 @@ beforeEach(() => {
   resumeSubscription.mockClear();
   cancelSubscriptionAtPeriodEnd.mockClear();
   cancelStripeSubscription.mockClear();
+  createBillingPortalSession.mockClear();
+  resolvePortalConfiguration.mockClear();
+});
+
+describe('getOrgPortalLink', () => {
+  // The portal configuration is what disables plan changes inside the portal
+  // (they belong in the app) and enables the cancellation-reason survey. A
+  // session created without it silently uses the Stripe account default, which
+  // enforces neither, and no UI calls this route yet to notice.
+  it('creates the session against our portal configuration', async () => {
+    const { supabase } = fakeSupabase(liveOrg());
+
+    const url = await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin');
+
+    expect(url).toBe('https://billing.stripe.test/session');
+    expect(resolvePortalConfiguration).toHaveBeenCalledTimes(1);
+    expect(createBillingPortalSession).toHaveBeenCalledWith({
+      customerId: 'cus_1',
+      returnUrl: 'https://app.test/admin',
+      configuration: 'bpc_ours',
+    });
+  });
+
+  // A half-configured Stripe account should fail loudly, not hand the customer a
+  // portal that lets them change plans behind the app's back.
+  it('does not open a session at all when no configuration is tagged', async () => {
+    resolvePortalConfiguration.mockRejectedValueOnce(
+      new Error('No Customer Portal configuration tagged nexxus_portal=default.'),
+    );
+    const { supabase } = fakeSupabase(liveOrg());
+
+    await expect(getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin')).rejects.toThrow(
+      /nexxus_portal=default/,
+    );
+    expect(createBillingPortalSession).not.toHaveBeenCalled();
+  });
 });
 
 describe('pauseOrgBilling', () => {

@@ -33,6 +33,9 @@ interface OrgRow {
   plan_tier: string | null;
   billing_period: string | null;
   seat_count: number | null;
+  subscription_cancel_at: string | null;
+  billing_paused_at: string | null;
+  billing_pause_resumes_at: string | null;
 }
 
 interface OrphanRow extends OrgRow {
@@ -48,6 +51,19 @@ function growthMonthly(id: string, extraSeats = 0, status = 'active'): Stripe.Su
   return { id, status, items: { data: items } } as unknown as Stripe.Subscription;
 }
 
+/** The same subscription with collection paused, optionally with a resume date. */
+function paused(sub: Stripe.Subscription, resumesAt?: number): Stripe.Subscription {
+  return {
+    ...sub,
+    pause_collection: { behavior: 'void', ...(resumesAt ? { resumes_at: resumesAt } : {}) },
+  } as unknown as Stripe.Subscription;
+}
+
+/** The same subscription with a scheduled cancellation. */
+function cancelingAt(sub: Stripe.Subscription, cancelAt: number): Stripe.Subscription {
+  return { ...sub, cancel_at: cancelAt } as unknown as Stripe.Subscription;
+}
+
 const mirroredGrowthOrg = (overrides: Partial<OrgRow> = {}): OrgRow => ({
   id: 'org-1',
   subscription_id: 'sub_1',
@@ -55,10 +71,13 @@ const mirroredGrowthOrg = (overrides: Partial<OrgRow> = {}): OrgRow => ({
   plan_tier: 'growth',
   billing_period: 'monthly',
   seat_count: 8,
+  subscription_cancel_at: null,
+  billing_paused_at: null,
+  billing_pause_resumes_at: null,
   ...overrides,
 });
 
-/** An org that reached Checkout: it has a billing Customer and no subscription id. */
+/** An org that reached Checkout: it has a billing Customer and no live status. */
 const orphanOrg = (overrides: Partial<OrphanRow> = {}): OrphanRow => ({
   id: 'org-orphan',
   subscription_id: null,
@@ -66,6 +85,9 @@ const orphanOrg = (overrides: Partial<OrphanRow> = {}): OrphanRow => ({
   plan_tier: null,
   billing_period: null,
   seat_count: null,
+  subscription_cancel_at: null,
+  billing_paused_at: null,
+  billing_pause_resumes_at: null,
   stripe_customer_id: 'cus_orphan',
   ...overrides,
 });
@@ -249,6 +271,85 @@ describe('reconcileBillingMirror drift pass', () => {
     expect(alertTypes()).not.toContain('billing_mirror_drift_repaired');
   });
 
+  // FINDING 2. billing_paused_at is written only by the webhook, and
+  // deriveBillingAccess freezes on it. A lost resume leaves a paying org frozen,
+  // and re-running resume against an unpaused subscription emits no event, so
+  // nothing else in the system heals it.
+  it('unfreezes an org Stripe has already resumed', async () => {
+    const db = stubDb({
+      paying: [
+        mirroredGrowthOrg({
+          billing_paused_at: '2026-08-01T00:00:00.000Z',
+          billing_pause_resumes_at: '2026-10-01T00:00:00.000Z',
+        }),
+      ],
+    });
+    retrieveSubscription.mockResolvedValue(growthMonthly('sub_1'));
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.repaired).toBe(1);
+    expect(db.updates).toEqual([
+      { id: 'org-1', values: { billing_paused_at: null, billing_pause_resumes_at: null } },
+    ]);
+    expect(alertTypes()).toEqual(['billing_mirror_drift_repaired']);
+  });
+
+  it('stamps a pause the webhook never delivered', async () => {
+    const db = stubDb({ paying: [mirroredGrowthOrg()] });
+    const resumesAt = Math.floor(Date.parse('2026-12-01T00:00:00.000Z') / 1000);
+    retrieveSubscription.mockResolvedValue(paused(growthMonthly('sub_1'), resumesAt));
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.repaired).toBe(1);
+    const values = db.updates[0].values as Record<string, unknown>;
+    expect(typeof values.billing_paused_at).toBe('string');
+    expect(values.billing_pause_resumes_at).toBe('2026-12-01T00:00:00.000Z');
+  });
+
+  // Re-stamping every night would make the "paused since" date the operator sees
+  // walk forward forever.
+  it('keeps the original paused-since stamp while the subscription is still paused', async () => {
+    const db = stubDb({ paying: [mirroredGrowthOrg({ billing_paused_at: '2026-08-01T00:00:00.000Z' })] });
+    retrieveSubscription.mockResolvedValue(paused(growthMonthly('sub_1')));
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.repaired).toBe(0);
+    expect(db.updates).toEqual([]);
+  });
+
+  // Postgres hands back +00:00 where toISOString gives Z. Comparing the strings
+  // would rewrite these columns and alert every single night.
+  it('does not call a different timezone spelling of the same instant drift', async () => {
+    const db = stubDb({
+      paying: [mirroredGrowthOrg({ subscription_cancel_at: '2026-12-01T00:00:00+00:00' })],
+    });
+    retrieveSubscription.mockResolvedValue(
+      cancelingAt(growthMonthly('sub_1'), Math.floor(Date.parse('2026-12-01T00:00:00Z') / 1000)),
+    );
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.repaired).toBe(0);
+    expect(db.updates).toEqual([]);
+  });
+
+  it('mirrors a scheduled cancellation the webhook missed', async () => {
+    const db = stubDb({ paying: [mirroredGrowthOrg()] });
+    retrieveSubscription.mockResolvedValue(
+      cancelingAt(growthMonthly('sub_1'), Math.floor(Date.parse('2026-12-01T00:00:00Z') / 1000)),
+    );
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.repaired).toBe(1);
+    expect(db.updates).toEqual([
+      { id: 'org-1', values: { subscription_cancel_at: '2026-12-01T00:00:00.000Z' } },
+    ]);
+  });
+
   it('reports a clean zero sweep and touches Stripe not at all when both selects fail', async () => {
     const db = stubDb({
       selectError: { message: 'connection reset' },
@@ -281,14 +382,110 @@ describe('reconcileBillingMirror orphan pass', () => {
     recordPlatformAlert.mockClear();
   });
 
-  it('looks up every org that has a billing Customer but no subscription id', async () => {
+  it('looks up every org with a billing Customer that our row says is not being billed', async () => {
     const db = stubDb({ orphans: [orphanOrg()] });
 
     await reconcileBillingMirror(db.client);
 
     expect(db.filters).toContainEqual(['not', 'stripe_customer_id', 'is', null]);
-    expect(db.filters).toContainEqual(['is', 'subscription_id', null]);
+    // Keyed on the STATUS, not on a null subscription id: a canceled org keeps
+    // its dead subscription id, so a null-id filter cannot see it repurchase.
+    // The list is the exact complement of the drift pass's `in`.
+    expect(db.filters).toContainEqual([
+      'not', 'subscription_status', 'in', '(active,past_due,unpaid)',
+    ]);
+    expect(db.filters).not.toContainEqual(['is', 'subscription_id', null]);
     expect(listCustomerSubscriptions).toHaveBeenCalledWith('cus_orphan');
+  });
+
+  // FINDING 1. The deletion handler clears only the cancel and pause columns, so
+  // a canceled org keeps its old subscription_id. Buying again with a lost
+  // customer.subscription.created left it matching neither pass: it has an id, so
+  // the old orphan filter skipped it, and its status is dead, so the drift filter
+  // skipped it. The customer paid and stayed frozen with nothing self-healing.
+  it('adopts a repurchase after cancellation, overwriting the dead subscription id', async () => {
+    const db = stubDb({
+      orphans: [
+        orphanOrg({
+          id: 'org-repurchase',
+          subscription_id: 'sub_dead',
+          subscription_status: 'canceled',
+          plan_tier: 'starter',
+          billing_period: 'monthly',
+          seat_count: 3,
+          stripe_customer_id: 'cus_repurchase',
+        }),
+      ],
+    });
+    listCustomerSubscriptions.mockResolvedValue([
+      growthMonthly('sub_new', 0, 'active'),
+      growthMonthly('sub_dead', 0, 'canceled'),
+    ]);
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.adopted).toBe(1);
+    expect(db.updates).toEqual([
+      {
+        id: 'org-repurchase',
+        values: {
+          subscription_id: 'sub_new',
+          subscription_status: 'active',
+          plan_tier: 'growth',
+          seat_count: 8,
+        },
+      },
+    ]);
+    expect(result.details[0].changed?.subscription_id).toEqual(['sub_dead', 'sub_new']);
+
+    const alert = recordPlatformAlert.mock.calls[0][1];
+    expect(alert.alert_type).toBe('billing_subscription_adopted');
+    expect(alert.severity).toBe('critical');
+    expect(alert.details).toMatchObject({
+      previous_subscription_id: 'sub_dead',
+      stored_status: 'canceled',
+    });
+  });
+
+  // An `incomplete` subscription maps to no status at all, so an org whose row
+  // already matches the subscription it points at must not be rewritten, and
+  // above all must not page a human every night.
+  it('writes nothing when the row already agrees with the subscription it points at', async () => {
+    const db = stubDb({
+      orphans: [
+        orphanOrg({
+          subscription_id: 'sub_pending',
+          plan_tier: 'growth',
+          billing_period: 'monthly',
+          seat_count: 8,
+        }),
+      ],
+    });
+    listCustomerSubscriptions.mockResolvedValue([growthMonthly('sub_pending', 0, 'incomplete')]);
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.orphansChecked).toBe(1);
+    expect(result.adopted).toBe(0);
+    expect(db.updates).toEqual([]);
+    expect(recordPlatformAlert).not.toHaveBeenCalled();
+  });
+
+  // The filters are complements, so this cannot happen; if it ever does, the org
+  // is skipped rather than fetched from Stripe twice in one sweep.
+  it('never asks Stripe about an org the drift pass already handled', async () => {
+    const shared = mirroredGrowthOrg({ id: 'org-both' });
+    const db = stubDb({
+      paying: [shared],
+      orphans: [{ ...shared, stripe_customer_id: 'cus_both' }],
+    });
+    retrieveSubscription.mockResolvedValue(growthMonthly('sub_1'));
+
+    const result = await reconcileBillingMirror(db.client);
+
+    expect(result.checked).toBe(1);
+    expect(result.orphansChecked).toBe(0);
+    expect(listCustomerSubscriptions).not.toHaveBeenCalled();
   });
 
   it('adopts the subscription a paid-but-unmirrored org is actually on, and alerts loudly', async () => {

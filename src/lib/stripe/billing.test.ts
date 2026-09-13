@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const list = vi.fn();
 const configurationsList = vi.fn();
+const portalSessionsCreate = vi.fn();
 const sessionsCreate = vi.fn();
 const subscriptionsUpdate = vi.fn();
 const subscriptionsRetrieve = vi.fn();
@@ -10,7 +11,10 @@ const subscriptionsCancel = vi.fn();
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({
     prices: { list },
-    billingPortal: { configurations: { list: configurationsList } },
+    billingPortal: {
+      configurations: { list: configurationsList },
+      sessions: { create: portalSessionsCreate },
+    },
     checkout: { sessions: { create: sessionsCreate } },
     subscriptions: {
       update: subscriptionsUpdate,
@@ -25,6 +29,7 @@ import {
   cancelStripeSubscription,
   cancelSubscriptionAtPeriodEnd,
   createBillingCheckoutSession,
+  createBillingPortalSession,
   pauseSubscription,
   resolvePortalConfiguration,
   resolvePrices,
@@ -95,6 +100,28 @@ describe('resolvePortalConfiguration', () => {
     configurationsList.mockResolvedValue({ data: [{ id: 'bpc_other', metadata: {} }] });
     await expect(resolvePortalConfiguration()).rejects.toThrow(/stripe-billing-setup/);
   });
+});
+
+describe('createBillingPortalSession payload', () => {
+  beforeEach(() => {
+    portalSessionsCreate.mockReset().mockResolvedValue({ url: 'https://billing.stripe.test/s' });
+  });
+
+  // Without this the portal falls back to the Stripe account default, where plan
+  // changes are not disabled and the cancellation survey is not enabled.
+  it('sends the configuration it is given', async () => {
+    await createBillingPortalSession({
+      customerId: 'cus_1',
+      returnUrl: 'https://app.test/admin',
+      configuration: 'bpc_ours',
+    });
+    expect(portalSessionsCreate).toHaveBeenCalledWith({
+      customer: 'cus_1',
+      return_url: 'https://app.test/admin',
+      configuration: 'bpc_ours',
+    });
+  });
+
 });
 
 // ---------------------------------------------------------------------------
