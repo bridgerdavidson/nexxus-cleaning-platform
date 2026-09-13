@@ -137,6 +137,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     error,
     refetch,
     updateServiceInState,
+    replaceServiceInState,
     maxChecklistAdderByServiceId,
     refreshMaxChecklistAdders,
   } = useServices();
@@ -261,8 +262,9 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       setBusy(true);
       try {
         if (serviceDialog?.mode === "edit" && selectedService) {
-          const r = await updateService(selectedService.id, v, orgId);
+          const r = await updateService(selectedService.id, v);
           if (r.success) {
+            if (r.data) replaceServiceInState(r.data);
             toast.success("Service updated");
             setServiceDialog(null);
           } else {
@@ -284,7 +286,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         setBusy(false);
       }
     },
-    [serviceDialog, selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect],
+    [serviceDialog, selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect, replaceServiceInState],
   );
 
   const handleDuplicateService = useCallback(async () => {
@@ -319,13 +321,13 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     async (next: boolean) => {
       if (!selectedService) return;
       updateServiceInState(selectedService.id, { is_active: next });
-      const r = await toggleServiceActive(selectedService.id, next, orgId);
+      const r = await toggleServiceActive(selectedService.id, next);
       if (!r.success) {
         updateServiceInState(selectedService.id, { is_active: !next });
         toast.error(r.error || "Could not update the service");
       }
     },
-    [selectedService, orgId, updateServiceInState],
+    [selectedService, updateServiceInState],
   );
 
   const handleDeleteServiceClick = useCallback(async () => {
