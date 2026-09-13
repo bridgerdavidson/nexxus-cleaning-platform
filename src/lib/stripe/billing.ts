@@ -129,3 +129,57 @@ export async function resolvePortalConfiguration(): Promise<string> {
   portalConfigCache = mine.id;
   return mine.id;
 }
+
+// ---------------------------------------------------------------------------
+// Hosted Checkout (Phase 1b SaaS billing)
+// ---------------------------------------------------------------------------
+
+export interface BillingCheckoutInput {
+  customerId: string;
+  lineItems: Array<{ price: string; quantity: number }>;
+  organizationId: string;
+  successUrl: string;
+  cancelUrl: string;
+  automaticTax: boolean;
+}
+
+/**
+ * Hosted Checkout for the first subscription purchase.
+ *
+ * No trial_period_days: the app manages the trial and it is over by the time
+ * anyone reaches checkout. No payment_method_types: Stripe picks eligible
+ * methods from Dashboard settings, and hardcoding card would cost conversion.
+ *
+ * `integration_identifier` is deliberately omitted: the installed SDK is pinned
+ * to apiVersion 2025-12-15.clover and that parameter needs a much newer version,
+ * which would move every charge, transfer, Connect and payout call with it.
+ */
+export async function createBillingCheckoutSession(
+  input: BillingCheckoutInput,
+): Promise<Stripe.Checkout.Session> {
+  const stripe = getStripe();
+
+  const params: Stripe.Checkout.SessionCreateParams = {
+    mode: 'subscription',
+    customer: input.customerId,
+    customer_update: { address: 'auto', name: 'auto' },
+    // Collected from day one so the address data already exists when Stripe Tax
+    // is switched on later.
+    billing_address_collection: 'required',
+    line_items: input.lineItems,
+    subscription_data: { metadata: { organization_id: input.organizationId } },
+    metadata: { organization_id: input.organizationId },
+    // The launch offer is a Stripe coupon, not code.
+    allow_promotion_codes: true,
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+  };
+
+  // Passed only behind the flag: without an active Stripe Tax registration
+  // Stripe silently collects nothing and returns no error.
+  if (input.automaticTax) {
+    params.automatic_tax = { enabled: true };
+  }
+
+  return stripe.checkout.sessions.create(params);
+}
