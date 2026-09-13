@@ -112,20 +112,23 @@ describe('the service-role invariant', () => {
 
   it('is not imported by any service-role path', () => {
     const offenders: string[] = [];
-    let scanned = 0;
+    // Per-root, not aggregated: the roots are wildly uneven in size (payments is
+    // dozens of files, the webhook root is a single file), so a single combined
+    // total would stay well above zero even if one root got renamed out from
+    // under this test and `walk` silently returned [] for it. Checking each
+    // root's count individually means a renamed/missing root fails loudly no
+    // matter how small it is, which matters most for the webhook root: it is
+    // the money-in-flight case the header comment on guard.ts calls out by name.
     for (const root of roots) {
-      for (const file of walk(join(process.cwd(), root))) {
-        scanned += 1;
+      const files = walk(join(process.cwd(), root));
+      expect(files.length, `expected to find files under ${root}`).toBeGreaterThan(0);
+      for (const file of files) {
         const source = readFileSync(file, 'utf8');
         if (/from\s+['"](@\/lib\/billing\/guard|.*\/billing\/guard)['"]/.test(source)) {
           offenders.push(file.replace(process.cwd() + '/', ''));
         }
       }
     }
-    // Guards against a watched root being renamed out from under this test: `walk`
-    // returns [] for a missing directory, which would otherwise make this pass
-    // vacuously forever with zero files actually checked.
-    expect(scanned).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
 });
