@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
 
     const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
       allowedRoles: ['homeowner', 'owner', 'admin', 'manager'],
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
     const homeownerId = auth.userId;

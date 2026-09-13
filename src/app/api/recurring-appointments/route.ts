@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     // requires the Edit Bookings permission.
     const auth = await requireManagerPermission(request, organizationId, supabaseAdmin, 'can_edit_bookings', {
       errorMessage: 'Requires the Edit Bookings permission',
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
 

@@ -241,4 +241,58 @@ describe('POST /api/appointments', () => {
       .single();
     expect(row).toEqual({ homeowner_id: null, is_self_pay: true, payment_method_id: null, cleaner_id: payable.cleaner.userId });
   });
+
+  describe('billing enforcement', () => {
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    });
+
+    async function freezeOrg(organizationId: string) {
+      await db
+        .from('organizations')
+        .update({
+          comped_at: null,
+          subscription_status: 'trialing',
+          trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+        })
+        .eq('id', organizationId);
+    }
+
+    it('passes through when the flag is off, even for a frozen org', async () => {
+      await freezeOrg(org.organizationId);
+
+      const res = await post(body(), org.admin.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('returns 402 billing_frozen when the flag is on and the trial has expired', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await freezeOrg(org.organizationId);
+
+      const res = await post(body(), org.admin.accessToken);
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('billing_frozen');
+    });
+
+    it('allows a comped org with the flag on', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await db
+        .from('organizations')
+        .update({ comped_at: new Date().toISOString() })
+        .eq('id', org.organizationId);
+
+      const res = await post(body(), org.admin.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('still returns 403 to a non-member before it considers billing', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      const outsider = await withTestOrg();
+      cleanups.push(() => outsider.cleanup());
+      await freezeOrg(org.organizationId);
+
+      const res = await post(body(), outsider.admin.accessToken);
+      expect(res.status).toBe(403);
+    });
+  });
 });
