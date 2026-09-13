@@ -7,6 +7,15 @@ import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { compareChecklists } from '../lib/checklistOrder';
 import { Checklist, ChecklistLineItem, ChecklistWithItems } from '../types';
+import {
+  createChecklistApi,
+  createLineItemsApi,
+  deleteChecklistApi,
+  deleteLineItemApi,
+  reorderLineItemsApi,
+  updateChecklistApi,
+  updateLineItemApi,
+} from './checklists-api';
 
 interface UseChecklistsResult {
   checklists: ChecklistWithItems[];
@@ -187,321 +196,125 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
 }
 
 // ============================================================================
-// CHECKLIST CRUD FUNCTIONS
+// CHECKLIST CRUD FUNCTIONS (writes go through the API routes; reads stay direct)
 // ============================================================================
 
-/**
- * Create a new checklist for a service type
- */
+/** Create a new checklist for a service type. */
 export async function createChecklist(
   serviceTypeId: string,
   name: string = 'New Checklist',
   priceAdder: number = 0
 ): Promise<{ success: boolean; data?: Checklist; error?: string }> {
-  try {
-    const { data, error } = await supabase
-      .from('checklists')
-      .insert({
-        service_type_id: serviceTypeId,
-        name: name.trim() || 'New Checklist',
-        price_adder: priceAdder,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error creating checklist:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to create checklist',
-    };
-  }
+  const res = await createChecklistApi(serviceTypeId, { name: name.trim() || 'New Checklist', price_adder: priceAdder });
+  return res.success ? { success: true, data: res.data } : { success: false, error: res.error };
 }
 
-/**
- * Update a checklist's name
- */
+/** Update a checklist's name and price adder. */
 export async function updateChecklist(
   checklistId: string,
   name: string,
   priceAdder: number
 ): Promise<{ success: boolean; data?: Checklist; error?: string }> {
-  try {
-    if (!name.trim()) {
-      return { success: false, error: 'Checklist name cannot be empty' };
-    }
-
-    const { data, error } = await supabase
-      .from('checklists')
-      .update({ name: name.trim(), price_adder: priceAdder })
-      .eq('id', checklistId)
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error updating checklist:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to update checklist',
-    };
-  }
+  if (!name.trim()) return { success: false, error: 'Checklist name cannot be empty' };
+  const res = await updateChecklistApi(checklistId, { name: name.trim(), price_adder: priceAdder });
+  return res.success ? { success: true, data: res.data } : { success: false, error: res.error };
 }
 
-/**
- * Delete a checklist (line items are cascade deleted)
- */
+/** Delete a checklist (line items are cascade deleted). */
 export async function deleteChecklist(
   checklistId: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from('checklists')
-      .delete()
-      .eq('id', checklistId);
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error('Error deleting checklist:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to delete checklist',
-    };
-  }
+  const res = await deleteChecklistApi(checklistId);
+  return res.success ? { success: true } : { success: false, error: res.error };
 }
 
 // ============================================================================
 // LINE ITEM CRUD FUNCTIONS
 // ============================================================================
 
-/**
- * Create a new line item in a checklist
- */
+/** Create a new line item in a checklist. */
 export async function createLineItem(
   checklistId: string,
   task: string
 ): Promise<{ success: boolean; data?: ChecklistLineItem; error?: string }> {
-  try {
-    if (!task.trim()) {
-      return { success: false, error: 'Task cannot be empty' };
-    }
-
-    const { data, error } = await supabase
-      .from('checklist_line_items')
-      .insert({
-        checklist_id: checklistId,
-        task: task.trim(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error creating line item:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to create line item',
-    };
-  }
+  if (!task.trim()) return { success: false, error: 'Task cannot be empty' };
+  const res = await createLineItemsApi(checklistId, { task: task.trim() });
+  return res.success ? { success: true, data: res.data[0] } : { success: false, error: res.error };
 }
 
-/**
- * Update a line item's task text
- */
+/** Update a line item's task text. */
 export async function updateLineItem(
   lineItemId: string,
   task: string
 ): Promise<{ success: boolean; data?: ChecklistLineItem; error?: string }> {
-  try {
-    if (!task.trim()) {
-      return { success: false, error: 'Task cannot be empty' };
-    }
-
-    const { data, error } = await supabase
-      .from('checklist_line_items')
-      .update({ task: task.trim() })
-      .eq('id', lineItemId)
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true, data };
-  } catch (err) {
-    console.error('Error updating line item:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to update line item',
-    };
-  }
+  if (!task.trim()) return { success: false, error: 'Task cannot be empty' };
+  const res = await updateLineItemApi(lineItemId, { task: task.trim() });
+  return res.success ? { success: true, data: res.data } : { success: false, error: res.error };
 }
 
-/**
- * Delete a line item
- */
+/** Delete a line item. */
 export async function deleteLineItem(
   lineItemId: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase
-      .from('checklist_line_items')
-      .delete()
-      .eq('id', lineItemId);
-
-    if (error) {
-      throw error;
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error('Error deleting line item:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to delete line item',
-    };
-  }
+  const res = await deleteLineItemApi(lineItemId);
+  return res.success ? { success: true } : { success: false, error: res.error };
 }
 
-/**
- * Reorder line items in a checklist
- * Updates the position of each line item based on the order of ids provided
- */
+/** Reorder line items in a checklist. `orderedIds` must be every item exactly once. */
 export async function reorderLineItems(
   checklistId: string,
   orderedIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Update each line item's position sequentially to avoid request storms/timeouts.
-    const results: {
-      status: number;
-      statusText: string;
-      count: number | null;
-      error: { code?: string; message?: string } | null;
-    }[] = [];
-
-    for (const [index, id] of orderedIds.entries()) {
-      const result = await supabase
-        .from('checklist_line_items')
-        .update({ position: index })
-        .eq('id', id)
-        .eq('checklist_id', checklistId); // Ensure the item belongs to this checklist
-      results.push(result);
-    }
-
-    // Check if any updates failed
-    const failedUpdate = results.find((result) => result.error);
-    if (failedUpdate?.error) {
-      throw failedUpdate.error;
-    }
-
-    return { success: true };
-  } catch (err) {
-    console.error('Error reordering line items:', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : 'Failed to reorder line items',
-    };
-  }
+  const res = await reorderLineItemsApi(checklistId, orderedIds);
+  return res.success ? { success: true } : { success: false, error: res.error };
 }
 
 /**
  * Bulk-create line items from pasted text. Each non-blank line becomes one task,
- * appended after existing items (position left NULL so they sort last by created_at).
+ * appended after existing items (position stays NULL so they sort last by created_at).
  */
 export async function createLineItems(
   checklistId: string,
   tasks: string[]
 ): Promise<{ success: boolean; data?: ChecklistLineItem[]; error?: string }> {
-  try {
-    const rows = tasks
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((task) => ({ checklist_id: checklistId, task }));
-    if (rows.length === 0) return { success: false, error: 'No tasks to add' };
-
-    const { data, error } = await supabase
-      .from('checklist_line_items')
-      .insert(rows)
-      .select();
-    if (error) throw error;
-    return { success: true, data: (data ?? []) as ChecklistLineItem[] };
-  } catch (err) {
-    console.error('Error bulk-creating line items:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Failed to add tasks' };
-  }
+  const cleaned = tasks.map((t) => t.trim()).filter(Boolean);
+  if (cleaned.length === 0) return { success: false, error: 'No tasks to add' };
+  const res = await createLineItemsApi(checklistId, { tasks: cleaned });
+  return res.success ? { success: true, data: res.data } : { success: false, error: res.error };
 }
 
 /**
  * Clone a checklist (tier) within the same service, including all its line items
- * in order. The copy is named "<name> (copy)" and carries the source's price, so
- * the locked order places it right after the source (creation time breaks the tie).
+ * in order. The source is read here (reads stay direct); the copy is created by
+ * the checklist route, so the copy is named "<name> (copy)" and carries the
+ * source's price, which places it right after the source in the locked order.
  */
 export async function duplicateChecklist(
   checklistId: string
 ): Promise<{ success: boolean; data?: ChecklistWithItems; error?: string }> {
-  try {
-    const { data: source, error: srcError } = await supabase
-      .from('checklists')
-      .select('*, checklist_line_items (*)')
-      .eq('id', checklistId)
-      .single();
-    if (srcError) throw srcError;
-
-    const src = source as ChecklistWithItems;
-    const { data: created, error: createError } = await supabase
-      .from('checklists')
-      .insert({
-        service_type_id: src.service_type_id,
-        name: `${src.name} (copy)`,
-        price_adder: src.price_adder,
-      })
-      .select()
-      .single();
-    if (createError) throw createError;
-
-    const items = [...(src.checklist_line_items ?? [])].sort((a, b) => {
-      if (a.position === null && b.position === null) {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      if (a.position === null) return 1;
-      if (b.position === null) return -1;
-      return (a.position ?? 0) - (b.position ?? 0);
-    });
-
-    let clonedItems: ChecklistLineItem[] = [];
-    if (items.length > 0) {
-      const { data: inserted, error: itemsError } = await supabase
-        .from('checklist_line_items')
-        .insert(items.map((it, idx) => ({ checklist_id: created.id, task: it.task, position: idx })))
-        .select();
-      if (itemsError) throw itemsError;
-      clonedItems = (inserted ?? []) as ChecklistLineItem[];
-    }
-
-    return { success: true, data: { ...(created as Checklist), checklist_line_items: clonedItems } };
-  } catch (err) {
-    console.error('Error duplicating checklist:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Failed to duplicate checklist' };
+  const { data: source, error: srcError } = await supabase
+    .from('checklists')
+    .select('*, checklist_line_items (*)')
+    .eq('id', checklistId)
+    .single();
+  if (srcError || !source) {
+    return { success: false, error: srcError?.message ?? 'Checklist not found' };
   }
+  const src = source as ChecklistWithItems;
+  const items = [...(src.checklist_line_items ?? [])].sort((a, b) => {
+    if (a.position === null && b.position === null) {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+    if (a.position === null) return 1;
+    if (b.position === null) return -1;
+    return (a.position ?? 0) - (b.position ?? 0);
+  });
+  const res = await createChecklistApi(src.service_type_id, {
+    name: `${src.name} (copy)`,
+    price_adder: Number(src.price_adder) || 0,
+    items: items.map((it) => it.task),
+  });
+  return res.success ? { success: true, data: res.data } : { success: false, error: res.error };
 }
 
 export type { Checklist, ChecklistLineItem, ChecklistWithItems };
