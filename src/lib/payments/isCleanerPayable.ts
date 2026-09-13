@@ -46,3 +46,21 @@ export function isCleanerPayable(cleaner: CleanerPayoutFields | null | undefined
   if (model === 'flat') return Number(cleaner.flat_rate_cents) > 0;
   return Number(cleaner.payout_percent) > 0; // percentage (incl. legacy spelling)
 }
+
+/**
+ * Why a cleaner cannot be offered a company-pays (self-pay) job, or null when they can.
+ *
+ * A self-pay job's only money movement is company card -> cleaner Connect account, so the
+ * picker (and now POST /api/appointments) refuses cleaners settlement could not pay. The
+ * yes/no comes from isCleanerPayable (the same predicate settleSelfPay uses); the text says
+ * what to fix, in the same words the Cleaners page uses for the matching state.
+ */
+export function selfPayCleanerBlockReason(c: CleanerPayoutFields): string | null {
+  if (isCleanerPayable(c)) return null;
+  if (!c.payout_configured_at) return 'Pay not set';
+  if (c.payout_model === 'hourly_external') return 'Paid off platform';
+  if (!c.stripe_connect_account_id) return 'No Stripe payout account yet';
+  if (c.stripe_connect_onboarding_complete !== true) return 'Stripe payout setup not finished';
+  if (c.payout_model === 'flat') return 'Flat rate not set';
+  return 'Pay set to 0%';
+}
