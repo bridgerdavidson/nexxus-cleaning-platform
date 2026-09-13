@@ -952,11 +952,18 @@ describe('deriveBillingAccess Stripe statuses', () => {
     ['past_due', 'past_due',      false],
     ['unpaid',   'unpaid',        true],
     ['canceled', 'canceled',      true],
-    ['none',     'trial_expired', true],
   ] as const)('maps %s to %s (frozen: %s)', (status, state, frozen) => {
     const a = deriveBillingAccess(row({ subscription_status: status, seat_count: 8 }), NOW);
     expect(a.state).toBe(state);
     expect(a.frozen).toBe(frozen);
+  });
+
+  it('fails closed on `none` even when the trial clock is still live', () => {
+    // The default row has a trial 7 days out. `none` must still freeze: it is an
+    // impossible state after the backfill, and free service is the worse error.
+    const a = deriveBillingAccess(row({ subscription_status: 'none' }), NOW);
+    expect(a.state).toBe('trial_expired');
+    expect(a.frozen).toBe(true);
   });
 
   it('keeps past_due unfrozen because Stripe is still retrying', () => {
@@ -1092,9 +1099,21 @@ export function deriveBillingAccess(org: OrgBillingRow, now: Date): BillingAcces
     };
   }
 
-  // `none` cannot occur after the Phase 1b backfill and the provisioning stamp,
-  // but if it ever does, fail closed into the paywall rather than give free service.
-  const status = org.subscription_status === 'none' ? 'trialing' : org.subscription_status;
+  // `none` cannot occur after the Phase 1b backfill and the provisioning stamp.
+  // If it ever does, fail closed into the paywall regardless of what the trial
+  // clock says: the org sees a plan picker rather than silently receiving free
+  // service. Spec §7 states this outcome unconditionally.
+  if (org.subscription_status === 'none') {
+    return {
+      state: 'trial_expired',
+      frozen: true,
+      trialDaysLeft: 0,
+      canExtendTrial: org.trial_extended_at == null,
+      seatCap: TRIAL_SEAT_CAP,
+    };
+  }
+
+  const status = org.subscription_status;
 
   if (status === 'trialing') {
     const left = daysLeft(org.trial_ends_at, now);
@@ -1303,7 +1322,7 @@ MSG
 ```ts
 // src/lib/billing/guard.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertOrgWritable } from './guard';
 
@@ -1429,7 +1448,6 @@ describe('the service-role invariant', () => {
 });
 
 function walk(dir: string): string[] {
-  const { readdirSync, statSync, existsSync } = require('node:fs') as typeof import('node:fs');
   if (!existsSync(dir)) return [];
   return readdirSync(dir).flatMap((entry: string) => {
     const full = join(dir, entry);
@@ -1964,7 +1982,7 @@ MSG
 
 **Interfaces:**
 - Consumes: `deriveBillingAccess`, `ORG_BILLING_COLUMNS` (Task 4); `assertOrgWritable` (Task 6); `PLANS`, `PLAN_TIERS` (Task 2).
-- Produces: `countSeatsInUse(supabaseAdmin, organizationId)` and `seatCapDecision(...)`. PR E's checkout route reuses `countSeatsInUse` to enforce `seat_count >= seatsInUse`.
+- Produces: `countSeatsInUse(supabaseAdmin, organizationId)`, `seatCapDecision(...)`, and `nextTierFor(seatsInUse, currentTier)`. PR E's checkout route reuses `countSeatsInUse` to enforce `seat_count >= seatsInUse`.
 
 **Context an implementer cannot infer:**
 - `send-invite` does **not** use `requireOrgAuth`. It rolls its own membership and permission check inline, setting an `isAuthorized` flag and gating at lines 83-88. It therefore needs the standalone `assertOrgWritable`, called immediately after that gate at line 89, not the `requireWritable` option.
@@ -2001,13 +2019,23 @@ describe('seatCapDecision', () => {
 });
 
 describe('nextTierFor', () => {
-  it('names the cheapest tier that fits one more seat', () => {
-    expect(nextTierFor(5)).toBe('Growth');
-    expect(nextTierFor(15)).toBe('Pro');
+  it('names the cheapest tier above the current one that fits another seat', () => {
+    expect(nextTierFor(5, 'starter')).toBe('Growth');
+    expect(nextTierFor(15, 'growth')).toBe('Pro');
   });
 
-  it('returns null once Pro is the answer', () => {
-    expect(nextTierFor(40)).toBeNull();
+  it('returns null when the current tier already fits, because the fix is buying a seat', () => {
+    // Starter's ceiling is 5, so at 3 in use they do not need a bigger plan.
+    expect(nextTierFor(3, 'starter')).toBeNull();
+  });
+
+  it('returns null on Pro, which has no ceiling to outgrow', () => {
+    expect(nextTierFor(40, 'pro')).toBeNull();
+  });
+
+  it('suggests the smallest tier that fits when there is no plan yet', () => {
+    expect(nextTierFor(2, null)).toBe('Starter');
+    expect(nextTierFor(9, null)).toBe('Growth');
   });
 });
 ```
@@ -2032,7 +2060,7 @@ Expected: FAIL, cannot resolve `./seats`.
 // Spec: docs/superpowers/specs/2026-09-08-saas-billing-design.md §9.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { PLANS, PLAN_TIERS } from './plans';
+import { PLANS, PLAN_TIERS, type PlanTier } from './plans';
 
 /**
  * Cleaner members plus pending cleaner invites.
@@ -2071,12 +2099,27 @@ export function seatCapDecision(input: { seatCap: number | null; seatsInUse: num
   return { allowed: input.seatsInUse < input.seatCap };
 }
 
-/** The cheapest tier whose seat ceiling fits one more than `seatsInUse`, by name. */
-export function nextTierFor(seatsInUse: number): string | null {
+/**
+ * The cheapest tier STRICTLY ABOVE `currentTier` whose seat ceiling admits one
+ * more than `seatsInUse`, by name. Null when the current tier already admits it
+ * (the fix is buying a seat, not changing plan) or when nothing higher exists.
+ *
+ * Pro's ceiling is null, so without the currentTier argument this would name Pro
+ * for any number at all, including for an org already on Pro.
+ */
+export function nextTierFor(seatsInUse: number, currentTier: PlanTier | null): string | null {
   const needed = seatsInUse + 1;
-  for (const tier of PLAN_TIERS) {
+  const fits = (tier: PlanTier) => {
     const max = PLANS[tier].maxSeats;
-    if (max == null || max >= needed) return PLANS[tier].name;
+    return max == null || max >= needed;
+  };
+
+  // Already on a tier that could hold another seat: they need seats, not a plan.
+  if (currentTier && fits(currentTier)) return null;
+
+  const startAt = currentTier ? PLAN_TIERS.indexOf(currentTier) + 1 : 0;
+  for (const tier of PLAN_TIERS.slice(startAt)) {
+    if (fits(tier)) return PLANS[tier].name;
   }
   return null;
 }
@@ -2225,7 +2268,7 @@ In `src/app/api/admin/send-invite/route.ts`, immediately after the existing auth
               cap: access.seatCap,
               in_use: seatsInUse,
               tier: billingRow.plan_tier ?? null,
-              next_tier: nextTierFor(seatsInUse),
+              next_tier: nextTierFor(seatsInUse, (billingRow.plan_tier as PlanTier | null) ?? null),
             },
             { status: 409 },
           );
