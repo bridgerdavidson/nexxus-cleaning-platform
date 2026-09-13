@@ -545,3 +545,173 @@ describe('POST /api/admin/send-invite (org-branded delivery)', () => {
     expect((rows ?? []).map((r) => (r as { status: string }).status)).toEqual(['failed']);
   });
 });
+
+/**
+ * Purchased-seat cap (SaaS billing spec §9): seats are bought, not metered, so
+ * this route is the only place that asks whether one more cleaner fits. A
+ * cleaner member or a PENDING cleaner invite each reserve a seat; a manager,
+ * admin, or homeowner invite is never capped; a comped org has no cap at all.
+ * The freeze check runs first, so a frozen org sees 402 and not a 409 about
+ * seats it cannot buy until it unfreezes.
+ */
+describe('POST /api/admin/send-invite (purchased seat cap)', () => {
+  let org: TestOrgFixture | null = null;
+  let owner: OwnerMemberHandle | null = null;
+
+  afterEach(async () => {
+    delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    vi.restoreAllMocks();
+    await owner?.cleanup();
+    await org?.cleanup();
+    org = null;
+    owner = null;
+  });
+
+  interface SeatCapBody {
+    success?: boolean;
+    error?: string;
+    cap?: number | null;
+    in_use?: number;
+    tier?: string | null;
+    next_tier?: string | null;
+  }
+
+  /** The GoTrue mailer, mocked exactly as in the describes above. */
+  function mockInviteMailer() {
+    return vi
+      .spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+  }
+
+  /** One owner-sent invite with a unique email. */
+  async function sendInvite(role: 'cleaner' | 'manager') {
+    return callRoute<SeatCapBody>(POST, {
+      method: 'POST',
+      headers: bearerHeader(owner!.accessToken),
+      body: {
+        email: `seat-${randomUUID().slice(0, 8)}@test.local`,
+        role,
+        organizationId: org!.organizationId,
+      },
+    });
+  }
+
+  /** A paid Starter subscription with `seats` purchased cleaner seats. */
+  async function purchaseSeats(seats: number) {
+    const db = createTestSupabaseClient();
+    const { error } = await db
+      .from('organizations')
+      .update({
+        comped_at: null,
+        subscription_status: 'active',
+        plan_tier: 'starter',
+        billing_period: 'monthly',
+        seat_count: seats,
+      })
+      .eq('id', org!.organizationId);
+    if (error) throw new Error(`failed to set purchased seats: ${error.message}`);
+  }
+
+  it('refuses a cleaner invite at the cap with 409 and the upgrade hint', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    const inviteSpy = mockInviteMailer();
+    // The fixture already seeds one cleaner member, so one purchased seat is full.
+    await purchaseSeats(1);
+
+    const { status, body } = await sendInvite('cleaner');
+
+    expect(status).toBe(409);
+    expect(body).toMatchObject({
+      error: 'seat_cap_reached',
+      cap: 1,
+      in_use: 1,
+      tier: 'starter',
+      // Starter holds up to 5, so the fix is buying a seat, not a bigger plan.
+      next_tier: null,
+    });
+    // Refused before anything was created: no email, no invite row.
+    expect(inviteSpy).not.toHaveBeenCalled();
+    const db = createTestSupabaseClient();
+    const { data: rows } = await db
+      .from('invites')
+      .select('id')
+      .eq('organization_id', org.organizationId);
+    expect(rows ?? []).toEqual([]);
+  });
+
+  it('counts a pending invite as a reserved seat', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    await purchaseSeats(2);
+
+    // One cleaner member + one pending invite = 2 = the cap.
+    const first = await sendInvite('cleaner');
+    expect(first.status).toBe(200);
+
+    const second = await sendInvite('cleaner');
+    expect(second.status).toBe(409);
+    expect(second.body.in_use).toBe(2);
+  });
+
+  it('never caps a comped org', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    // A comp has a null cap, which means unlimited, never zero.
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ comped_at: new Date().toISOString(), seat_count: 1 })
+      .eq('id', org.organizationId);
+
+    const { status } = await sendInvite('cleaner');
+    expect(status).toBe(200);
+  });
+
+  it('does not cap a manager invite', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    await purchaseSeats(1);
+
+    const { status } = await sendInvite('manager');
+    expect(status).toBe(200);
+  });
+
+  it('returns 402 before it considers seats when the org is frozen', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({
+        comped_at: null,
+        subscription_status: 'trialing',
+        trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+      })
+      .eq('id', org.organizationId);
+
+    const { status, body } = await sendInvite('cleaner');
+    expect(status).toBe(402);
+    expect(body.error).toBe('billing_frozen');
+  });
+
+  it('passes through when the flag is off, even past the cap', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    await purchaseSeats(1);
+
+    const { status } = await sendInvite('cleaner');
+    expect(status).toBe(200);
+  });
+});
