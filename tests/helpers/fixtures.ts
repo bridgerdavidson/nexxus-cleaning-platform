@@ -88,6 +88,21 @@ export interface WithTestOrgOptions {
    * pay decision), which is not-payable and defers settlement.
    */
   cleanerPayConfigured?: boolean;
+  /**
+   * Billing columns for the new organization. Defaults to a live 14-day trial,
+   * matching what POST /api/platform/organizations does, so a test org is never
+   * accidentally frozen. Pass an override to exercise a specific billing state.
+   */
+  billing?: {
+    subscription_status?: string;
+    trial_ends_at?: string | null;
+    trial_extended_at?: string | null;
+    comped_at?: string | null;
+    plan_tier?: string | null;
+    billing_period?: string | null;
+    seat_count?: number | null;
+    billing_paused_at?: string | null;
+  };
 }
 
 /**
@@ -105,10 +120,20 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
   const uniq = randomUUID().slice(0, 8);
   const orgName = `Test Org ${uniq}`;
 
+  // Default to a live 14-day trial, matching what POST /api/platform/organizations
+  // stamps at real provisioning, so a fresh test org is never accidentally frozen.
+  // `opts.billing` wins over these defaults field by field.
+  const billingDefaults = {
+    subscription_status: 'trialing',
+    trial_ends_at: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+  };
+
   const { data: org, error: orgError } = await admin
     .from('organizations')
     .insert({
       name: orgName,
+      ...billingDefaults,
+      ...(opts.billing ?? {}),
       ...(opts.defaultPayoutModel ? { default_payout_model: opts.defaultPayoutModel } : {}),
       ...(opts.platformFeeBps !== undefined ? { platform_fee_bps: opts.platformFeeBps } : {}),
       ...(opts.minMarginBps !== undefined ? { min_margin_bps: opts.minMarginBps } : {}),

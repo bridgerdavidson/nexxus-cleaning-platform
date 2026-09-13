@@ -55,7 +55,10 @@ export default defineConfig({
         test: {
           name: 'integration',
           environment: 'node',
-          include: ['src/**/*.integration.test.ts'],
+          // tests/helpers/**/*.integration.test.ts covers the shared test fixtures
+          // themselves (e.g. withTestOrg's billing defaults), which have no single
+          // owning route under src/app/api to co-locate next to.
+          include: ['src/**/*.integration.test.ts', 'tests/**/*.integration.test.ts'],
           globalSetup: ['./tests/setup/integration.globalSetup.ts'],
           setupFiles: ['./tests/setup/integration.setup.ts'],
           fileParallelism: false,
