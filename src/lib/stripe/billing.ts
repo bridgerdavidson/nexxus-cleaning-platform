@@ -9,6 +9,7 @@
  */
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
+import { LOOKUP_KEYS, type LookupKey } from '@/lib/billing/plans';
 
 export async function createStripeBillingCustomer(params: {
   organizationId: string;
@@ -59,4 +60,72 @@ export async function createBillingPortalSession(params: {
     customer: params.customerId,
     return_url: params.returnUrl,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Price + portal resolution (Phase 1b SaaS billing)
+// ---------------------------------------------------------------------------
+
+let priceCache: Record<LookupKey, string> | null = null;
+let portalConfigCache: string | null = null;
+
+/** Test-only. Clears the per-process caches so specs are not order-dependent. */
+export function __resetBillingCaches(): void {
+  priceCache = null;
+  portalConfigCache = null;
+}
+
+/**
+ * Every plan Price, keyed by lookup key.
+ *
+ * No env vars and no config table: test mode and live mode differ only in which
+ * account the SDK key points at. A half-configured account throws here rather
+ * than silently creating a subscription that is missing its seat item.
+ */
+export async function resolvePrices(): Promise<Record<LookupKey, string>> {
+  if (priceCache) return priceCache;
+
+  const stripe = getStripe();
+  const result = await stripe.prices.list({
+    lookup_keys: [...LOOKUP_KEYS],
+    active: true,
+    limit: 100,
+  });
+
+  const found = {} as Record<LookupKey, string>;
+  for (const price of result.data) {
+    if (price.lookup_key && (LOOKUP_KEYS as readonly string[]).includes(price.lookup_key)) {
+      found[price.lookup_key as LookupKey] = price.id;
+    }
+  }
+
+  const missing = LOOKUP_KEYS.filter((key) => !found[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Stripe is missing ${missing.length} billing price(s): ${missing.join(', ')}. ` +
+        'Run scripts/stripe-billing-setup.ts against this account.',
+    );
+  }
+
+  priceCache = found;
+  return found;
+}
+
+/** The Customer Portal configuration tagged `nexxus_portal = 'default'`. */
+export async function resolvePortalConfiguration(): Promise<string> {
+  if (portalConfigCache) return portalConfigCache;
+
+  const stripe = getStripe();
+  const result = await stripe.billingPortal.configurations.list({ limit: 100 });
+  const mine = result.data.find((c) => c.metadata?.nexxus_portal === 'default');
+
+  if (!mine) {
+    throw new Error(
+      'No Customer Portal configuration tagged nexxus_portal=default. ' +
+        'Run scripts/stripe-billing-setup.ts against this account.',
+    );
+  }
+
+  portalConfigCache = mine.id;
+  return mine.id;
 }
