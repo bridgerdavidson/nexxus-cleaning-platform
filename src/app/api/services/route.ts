@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       input.organization_id,
       supabaseAdmin,
       'can_manage_services',
-      { errorMessage: 'Requires the Manage services permission' },
+      { errorMessage: 'Requires the Manage services permission', requireWritable: true },
     );
     if (!auth.ok) return auth.response;
 

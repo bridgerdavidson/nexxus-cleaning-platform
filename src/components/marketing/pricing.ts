@@ -1,7 +1,12 @@
-// Pricing source of truth: the brain doc
-// ~/ai-os/projects/nexxus-service-solutions/strategy-decisions/2026-07-26-pricing-decision.md
-// (locked 2026-07-26). Numbers here mirror it; change them only with a logged
-// decision there. Annual is the default display ("billed annually").
+// The marketing page's dollar-shaped view of the plan catalog. The numbers live
+// in src/lib/billing/plans.ts (cents) so the pricing page and the billing engine
+// cannot drift; this file only reshapes them and carries the marketing copy.
+
+import {
+  EXTRA_SEAT_MONTHLY_CENTS,
+  PLANS,
+  type PlanTier,
+} from '@/lib/billing/plans';
 
 export type BillingPeriod = 'annual' | 'monthly'
 
@@ -19,15 +24,11 @@ export interface PricingTier {
   popular?: boolean
 }
 
-export const EXTRA_SEAT_PRICE = 10
+export const EXTRA_SEAT_PRICE = EXTRA_SEAT_MONTHLY_CENTS / 100
 
-export const PRICING_TIERS: PricingTier[] = [
-  {
-    name: 'Starter',
+const COPY: Record<PlanTier, { blurb: string; capNeeds: string | null; features: string[]; popular?: boolean }> = {
+  starter: {
     blurb: 'For solo operators and first hires.',
-    bases: { annual: 29, monthly: 39 },
-    includedSeats: 3,
-    cap: 5,
     capNeeds: 'Growth',
     features: [
       'The whole core product, no feature strip-down',
@@ -39,12 +40,8 @@ export const PRICING_TIERS: PricingTier[] = [
       'Standard support',
     ],
   },
-  {
-    name: 'Growth',
+  growth: {
     blurb: 'For companies ready to stop doing office work at night.',
-    bases: { annual: 79, monthly: 99 },
-    includedSeats: 8,
-    cap: 15,
     capNeeds: 'Pro',
     popular: true,
     features: [
@@ -56,22 +53,36 @@ export const PRICING_TIERS: PricingTier[] = [
       'New features land here first',
     ],
   },
-  {
-    name: 'Pro',
+  pro: {
     blurb: 'For established crews with managers and payroll.',
-    bases: { annual: 139, monthly: 169 },
-    includedSeats: 15,
-    cap: null,
     capNeeds: null,
+    // "Unlimited cleaner seats" becomes "No seat limit" (pricing doc addendum 2026-09-12).
     features: [
       'Everything in Growth',
-      'Unlimited cleaner seats',
+      'No seat limit',
       'White-glove onboarding',
       'Free data migration',
       'First access to AI features as they ship',
     ],
   },
-]
+}
+
+function toTier(tier: PlanTier): PricingTier {
+  const plan = PLANS[tier]
+  const copy = COPY[tier]
+  return {
+    name: plan.name,
+    blurb: copy.blurb,
+    bases: { annual: plan.annualMonthlyCents / 100, monthly: plan.monthlyCents / 100 },
+    includedSeats: plan.includedSeats,
+    cap: plan.maxSeats,
+    capNeeds: copy.capNeeds,
+    features: copy.features,
+    ...(copy.popular ? { popular: true } : {}),
+  }
+}
+
+export const PRICING_TIERS: PricingTier[] = [toTier('starter'), toTier('growth'), toTier('pro')]
 
 export function tierTotal(tier: PricingTier, period: BillingPeriod, cleaners: number): number {
   return tier.bases[period] + Math.max(0, cleaners - tier.includedSeats) * EXTRA_SEAT_PRICE

@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
     const orgId = (cleanerRow as { organization_id: string }).organization_id;
     const auth = await requireOrgAuth(request, orgId, supabaseAdmin, {
       allowedRoles: ['owner', 'admin', 'manager'],
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
 

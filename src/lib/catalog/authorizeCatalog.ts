@@ -27,6 +27,7 @@ export async function authorizeService(
   if (!target) return { ok: false, response: notFound('Service') };
   const auth = await requireManagerPermission(request, target.organizationId, supabaseAdmin, FLAG, {
     errorMessage: MESSAGE,
+    requireWritable: true,
   });
   if (!auth.ok) return auth;
   return { ok: true, userId: auth.userId, organizationId: target.organizationId };
@@ -41,6 +42,7 @@ export async function authorizeChecklist(
   if (!target) return { ok: false, response: notFound('Checklist') };
   const auth = await requireManagerPermission(request, target.organizationId, supabaseAdmin, FLAG, {
     errorMessage: MESSAGE,
+    requireWritable: true,
   });
   if (!auth.ok) return auth;
   return { ok: true, userId: auth.userId, ...target };
@@ -55,6 +57,7 @@ export async function authorizeLineItem(
   if (!target) return { ok: false, response: notFound('Task') };
   const auth = await requireManagerPermission(request, target.organizationId, supabaseAdmin, FLAG, {
     errorMessage: MESSAGE,
+    requireWritable: true,
   });
   if (!auth.ok) return auth;
   return { ok: true, userId: auth.userId, ...target };

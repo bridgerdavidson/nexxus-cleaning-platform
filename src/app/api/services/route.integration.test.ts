@@ -4,7 +4,14 @@ import { callRoute, bearerHeader } from '../../../../tests/helpers/auth';
 import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../tests/helpers/supabase';
 
-type Body = { success?: boolean; data?: Record<string, unknown>; error?: string };
+type Body = {
+  success?: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+  state?: string;
+  trial_ends_at?: string | null;
+  can_extend_trial?: boolean;
+};
 
 const db = createTestSupabaseClient();
 
@@ -152,5 +159,66 @@ describe('POST /api/services', () => {
       .eq('organization_id', org.organizationId)
       .eq('name', 'Rollback Me');
     expect(data).toEqual([]);
+  });
+
+  describe('billing enforcement', () => {
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    });
+
+    async function freezeOrg(organizationId: string) {
+      await db
+        .from('organizations')
+        .update({
+          comped_at: null,
+          subscription_status: 'trialing',
+          trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+        })
+        .eq('id', organizationId);
+    }
+
+    it('passes through when the flag is off, even for a frozen org', async () => {
+      await freezeOrg(org.organizationId);
+
+      const res = await post(validBody(), org.admin.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('returns 402 billing_frozen when the flag is on and the trial has expired', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await freezeOrg(org.organizationId);
+
+      const res = await post(validBody(), org.admin.accessToken);
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('billing_frozen');
+      expect(res.body.state).toBe('trial_expired');
+      expect(res.body.can_extend_trial).toBe(true);
+    });
+
+    it('allows a comped org with the flag on', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await db
+        .from('organizations')
+        .update({ comped_at: new Date().toISOString() })
+        .eq('id', org.organizationId);
+
+      const res = await post(validBody(), org.admin.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('still returns 403 to a non-member before it considers billing', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      const outsider = await withTestOrg();
+      cleanups.push(() => outsider.cleanup());
+      await freezeOrg(org.organizationId);
+
+      const res = await callRoute<Body>(POST, {
+        method: 'POST',
+        url: 'http://test/api/services',
+        headers: bearerHeader(outsider.admin.accessToken),
+        body: { ...validBody(), organization_id: org.organizationId },
+      });
+      expect(res.status).toBe(403);
+    });
   });
 });

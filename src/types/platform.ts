@@ -63,6 +63,12 @@ export interface PlatformStats {
   gmv_cents: number;
   total_appointments: number;
   new_tenants_30d: number;
+  past_due: number;
+  unpaid: number;
+  trial_expired: number;
+  trial_expiring_7d: number;
+  comped: number;
+  paused: number;
 }
 
 /** One platform-audit-log entry with actor + target-org names resolved. */

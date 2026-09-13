@@ -31,6 +31,7 @@ export async function PATCH(
 
     const auth = await requireOrgAuth(request, orgId, supabaseAdmin, {
       allowedRoles: ['owner'],
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
 

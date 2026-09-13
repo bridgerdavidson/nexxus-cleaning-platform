@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
     const auth = await requireManagerPermission(request, input.organization_id, supabaseAdmin, 'can_edit_properties', {
       allowedRoles: ['homeowner', 'owner', 'admin', 'manager'],
       errorMessage: 'Requires the Edit properties permission',
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
 
