@@ -179,6 +179,29 @@ export async function retrieveSubscription(subscriptionId: string): Promise<Stri
 }
 
 /**
+ * Every subscription Stripe holds for a customer, newest created first.
+ *
+ * Only the nightly reconcile's orphan pass uses this. An organization whose
+ * Checkout succeeded while its customer.subscription.created was lost has NO
+ * subscription id to retrieve, so its billing Customer is the only handle left
+ * on the subscription it is already paying for.
+ *
+ * `status: 'all'` so terminal subscriptions come back too and the caller decides
+ * what counts as adoptable, rather than depending on the default filter.
+ */
+export async function listCustomerSubscriptions(
+  customerId: string,
+  limit = 10,
+): Promise<Stripe.Subscription[]> {
+  const result = await getStripe().subscriptions.list({
+    customer: customerId,
+    status: 'all',
+    limit,
+  });
+  return result.data;
+}
+
+/**
  * One call handles tier up, tier down, seats up, seats down, and the interval
  * switch. Prorated immediately in both directions, which is what lets us avoid
  * Subscription Schedules entirely.
