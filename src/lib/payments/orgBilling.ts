@@ -7,7 +7,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   createStripeBillingCustomer,
-  createStripeSubscription,
   cancelStripeSubscription,
   cancelSubscriptionAtPeriodEnd,
   pauseSubscription,
@@ -89,41 +88,6 @@ export async function getOrCreateOrgCustomer(
   });
   await supabase.from('organizations').update({ stripe_customer_id: customer.id }).eq('id', organizationId);
   return customer.id;
-}
-
-export interface StartSubscriptionResult {
-  subscriptionId: string;
-  status: string;
-  customerId: string;
-  /** First-invoice PaymentIntent client secret, if confirmation is needed. */
-  clientSecret: string | null;
-}
-
-export async function startOrgSubscription(
-  supabase: SupabaseClient,
-  organizationId: string,
-  priceId: string,
-): Promise<StartSubscriptionResult> {
-  const customerId = await getOrCreateOrgCustomer(supabase, organizationId);
-  const sub = await createStripeSubscription({ customerId, priceId, organizationId });
-
-  // Mirror immediately; the customer.subscription.* webhook is the backstop.
-  await supabase
-    .from('organizations')
-    .update({ subscription_id: sub.id, subscription_status: mapSubscriptionStatus(sub.status) })
-    .eq('id', organizationId);
-
-  // Pull the PaymentIntent client secret off the expanded latest invoice, if present.
-  let clientSecret: string | null = null;
-  const invoice = sub.latest_invoice;
-  if (invoice && typeof invoice !== 'string') {
-    const pi = (invoice as { payment_intent?: unknown }).payment_intent;
-    if (pi && typeof pi !== 'string') {
-      clientSecret = (pi as { client_secret?: string | null }).client_secret ?? null;
-    }
-  }
-
-  return { subscriptionId: sub.id, status: sub.status, customerId, clientSecret };
 }
 
 export async function getOrgPortalLink(
