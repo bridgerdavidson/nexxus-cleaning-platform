@@ -2652,7 +2652,7 @@ describe('PUT /api/checklists/[id]/items/order', () => {
   });
 
   it('returns 400 when an item is missing, foreign, or duplicated', async () => {
-    const mismatch = 'item_ids must list every task in this checklist exactly once';
+    const mismatch = 'This checklist changed since you loaded it. Please try again.';
     expect((await put(checklistId, { item_ids: [ids.a, ids.b] }, org.admin.accessToken)).body.error).toBe(mismatch);
     expect((await put(checklistId, { item_ids: [ids.a, ids.b, FOREIGN_ID] }, org.admin.accessToken)).body.error).toBe(mismatch);
     expect((await put(checklistId, { item_ids: [ids.a, ids.a, ids.b] }, org.admin.accessToken)).body.error).toBe(
@@ -2715,7 +2715,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
     const existingIds = (existing ?? []).map((row) => row.id as string);
     if (!orderMatchesItems(parsed.value.item_ids, existingIds)) {
       return NextResponse.json(
-        { error: 'item_ids must list every task in this checklist exactly once' },
+        { error: 'This checklist changed since you loaded it. Please try again.' },
         { status: 400 },
       );
     }
@@ -3657,9 +3657,6 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (!property) return fail(404, 'Property not found');
     if (property.organization_id !== orgId) return fail(403, 'Property is in a different organization');
-    if ((property.owner_id ?? null) !== a.homeowner_id) {
-      return fail(400, 'Property does not belong to the selected customer');
-    }
 
     if (a.homeowner_id) {
       const { data: member } = await supabaseAdmin
@@ -3670,6 +3667,10 @@ export async function POST(request: NextRequest) {
         .eq('role', 'homeowner')
         .maybeSingle();
       if (!member) return fail(400, 'Customer is not a homeowner in this organization');
+    }
+
+    if ((property.owner_id ?? null) !== a.homeowner_id) {
+      return fail(400, 'Property does not belong to the selected customer');
     }
 
     const { data: service } = await supabaseAdmin
@@ -3865,7 +3866,7 @@ const valid = {
   state: 'TX',
   zip_code: '78701',
   bedrooms: '3',
-  bathrooms: 2.5,
+  bathrooms: 2,
   square_feet: null,
   special_instructions: '  ',
   access_instructions: ' Key under mat ',
@@ -3884,7 +3885,7 @@ describe('parsePropertyCreate', () => {
         state: 'TX',
         zip_code: '78701',
         bedrooms: 3,
-        bathrooms: 2.5,
+        bathrooms: 2,
         square_feet: null,
         special_instructions: null,
         access_instructions: 'Key under mat',
@@ -3906,7 +3907,8 @@ describe('parsePropertyCreate', () => {
     [{ zip_code: '' }, 'ZIP code is required'],
     [{ bedrooms: 1.5 }, 'Bedrooms must be a whole number of 0 or more'],
     [{ bedrooms: -1 }, 'Bedrooms must be a whole number of 0 or more'],
-    [{ bathrooms: 'two' }, 'Bathrooms must be a number of 0 or more'],
+    [{ bathrooms: 'two' }, 'Bathrooms must be a whole number of 0 or more'],
+    [{ bathrooms: 1.5 }, 'Bathrooms must be a whole number of 0 or more'],
     [{ square_feet: 12.5 }, 'Square feet must be a whole number of 0 or more'],
     [{ special_instructions: 4 }, 'Special instructions must be text'],
   ] as const)('rejects %j', (override, error) => {
@@ -3983,7 +3985,7 @@ export function parsePropertyCreate(body: unknown): ParseResult<PropertyCreateIn
 
   const bedrooms = parseOptionalNumber(r.bedrooms, 'Bedrooms', true);
   if (!bedrooms.ok) return bedrooms;
-  const bathrooms = parseOptionalNumber(r.bathrooms, 'Bathrooms', false);
+  const bathrooms = parseOptionalNumber(r.bathrooms, 'Bathrooms', true);
   if (!bathrooms.ok) return bathrooms;
   const squareFeet = parseOptionalNumber(r.square_feet, 'Square feet', true);
   if (!squareFeet.ok) return squareFeet;
