@@ -135,3 +135,25 @@ export async function cancelOrgSubscription(
   if (!org?.subscription_id) return;
   await cancelStripeSubscription(org.subscription_id);
 }
+
+/**
+ * Append an app-initiated row to the subscription timeline, so the back office
+ * shows both what we did and what Stripe told us. stripe_event_id is unique and
+ * not Stripe-validated, so app rows use an `app:` prefix.
+ */
+export async function appendBillingEvent(
+  supabase: SupabaseClient,
+  organizationId: string,
+  eventType: `app.${string}`,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabase.from('tenant_subscription_events').insert({
+    organization_id: organizationId,
+    stripe_event_id: `app:${crypto.randomUUID()}`,
+    event_type: eventType,
+    payload,
+  });
+  // The timeline is forensic, not load-bearing: never fail a billing action
+  // because its audit row did not land.
+  if (error) console.error(`appendBillingEvent(${eventType}) failed:`, error.message);
+}
