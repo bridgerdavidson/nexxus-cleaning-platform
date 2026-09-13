@@ -2,15 +2,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const list = vi.fn();
 const configurationsList = vi.fn();
+const sessionsCreate = vi.fn();
+const subscriptionsUpdate = vi.fn();
+const subscriptionsRetrieve = vi.fn();
 
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({
     prices: { list },
     billingPortal: { configurations: { list: configurationsList } },
+    checkout: { sessions: { create: sessionsCreate } },
+    subscriptions: { update: subscriptionsUpdate, retrieve: subscriptionsRetrieve },
   }),
 }));
 
-import { __resetBillingCaches, resolvePortalConfiguration, resolvePrices } from './billing';
+import {
+  __resetBillingCaches,
+  createBillingCheckoutSession,
+  resolvePortalConfiguration,
+  resolvePrices,
+  retrieveSubscription,
+  updateSubscriptionItems,
+  type BillingCheckoutInput,
+} from './billing';
 
 const allEight = () => ({
   data: [
@@ -72,5 +85,109 @@ describe('resolvePortalConfiguration', () => {
   it('throws when none is tagged', async () => {
     configurationsList.mockResolvedValue({ data: [{ id: 'bpc_other', metadata: {} }] });
     await expect(resolvePortalConfiguration()).rejects.toThrow(/stripe-billing-setup/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Payload-level coverage. The route specs mock this whole module, so these are
+// the ONLY tests that see what actually goes to Stripe. Every constraint below
+// is a deliberate design decision that is invisible one layer up.
+// ---------------------------------------------------------------------------
+
+const checkoutInput = (overrides: Partial<BillingCheckoutInput> = {}): BillingCheckoutInput => ({
+  customerId: 'cus_test',
+  lineItems: [{ price: 'p_sm', quantity: 1 }],
+  organizationId: 'org-1',
+  successUrl: 'https://app.test/ok',
+  cancelUrl: 'https://app.test/no',
+  automaticTax: false,
+  ...overrides,
+});
+
+const createdParams = () => sessionsCreate.mock.calls[0][0] as Record<string, unknown>;
+
+describe('createBillingCheckoutSession payload', () => {
+  beforeEach(() => {
+    sessionsCreate.mockReset();
+    sessionsCreate.mockResolvedValue({ id: 'cs_1', url: 'https://checkout.test/s' });
+  });
+
+  it('collects a billing address from day one, so the data exists when Stripe Tax is switched on', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    expect(createdParams().billing_address_collection).toBe('required');
+    expect(createdParams().customer_update).toEqual({ address: 'auto', name: 'auto' });
+  });
+
+  it('never pins payment_method_types, so Stripe picks eligible methods from Dashboard settings', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    expect('payment_method_types' in createdParams()).toBe(false);
+  });
+
+  it('never sends trial_period_days: the app owns the trial and it is over by checkout', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    const params = createdParams();
+    expect('trial_period_days' in params).toBe(false);
+    const subscriptionData = params.subscription_data as Record<string, unknown>;
+    expect('trial_period_days' in subscriptionData).toBe(false);
+    expect(JSON.stringify(params)).not.toContain('trial_period_days');
+  });
+
+  it('omits automatic_tax entirely when the caller has it off', async () => {
+    await createBillingCheckoutSession(checkoutInput({ automaticTax: false }));
+    expect('automatic_tax' in createdParams()).toBe(false);
+  });
+
+  it('sends automatic_tax only when the caller has it on', async () => {
+    await createBillingCheckoutSession(checkoutInput({ automaticTax: true }));
+    expect(createdParams().automatic_tax).toEqual({ enabled: true });
+  });
+
+  it('subscribes, tags the org on both the session and the subscription, and allows promo codes', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    const params = createdParams();
+    expect(params.mode).toBe('subscription');
+    expect(params.customer).toBe('cus_test');
+    expect(params.metadata).toEqual({ organization_id: 'org-1' });
+    expect(params.subscription_data).toEqual({ metadata: { organization_id: 'org-1' } });
+    expect(params.allow_promotion_codes).toBe(true);
+    expect(params.success_url).toBe('https://app.test/ok');
+    expect(params.cancel_url).toBe('https://app.test/no');
+    expect(params.line_items).toEqual([{ price: 'p_sm', quantity: 1 }]);
+  });
+
+  it('omits integration_identifier, which the pinned API version does not accept', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    expect('integration_identifier' in createdParams()).toBe(false);
+  });
+});
+
+describe('updateSubscriptionItems payload', () => {
+  beforeEach(() => {
+    subscriptionsUpdate.mockReset();
+    subscriptionsUpdate.mockResolvedValue({ id: 'sub_1', status: 'active' });
+  });
+
+  it('prorates immediately in both directions, which is what avoids Subscription Schedules', async () => {
+    await updateSubscriptionItems('sub_1', [{ id: 'si_base', price: 'p_gm' }], 'org-1');
+    const [id, params] = subscriptionsUpdate.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe('sub_1');
+    expect(params.proration_behavior).toBe('create_prorations');
+    expect(params.items).toEqual([{ id: 'si_base', price: 'p_gm' }]);
+    expect(params.metadata).toEqual({ organization_id: 'org-1' });
+  });
+
+  it('never pins payment_method_types on the update either', async () => {
+    await updateSubscriptionItems('sub_1', [{ id: 'si_base', price: 'p_gm' }], 'org-1');
+    const params = subscriptionsUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect('payment_method_types' in params).toBe(false);
+  });
+});
+
+describe('retrieveSubscription', () => {
+  it('asks for the subscription by id, with no extra expansion', async () => {
+    subscriptionsRetrieve.mockReset();
+    subscriptionsRetrieve.mockResolvedValue({ id: 'sub_1', items: { data: [] } });
+    await retrieveSubscription('sub_1');
+    expect(subscriptionsRetrieve).toHaveBeenCalledWith('sub_1');
   });
 });

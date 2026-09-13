@@ -135,6 +135,92 @@ describe('POST /api/billing/checkout', () => {
     }
   });
 
+  it('sends automatic_tax once the tax flag is on', async () => {
+    process.env.BILLING_TAX_ENABLED = 'true';
+    const org = await withTestOrg();
+    try {
+      sessionMock.mockClear();
+      await checkout(org.admin.accessToken, {
+        organization_id: org.organizationId,
+        tier: 'starter',
+        period: 'monthly',
+        seat_count: 3,
+      });
+      expect(sessionMock.mock.calls[0][0].automaticTax).toBe(true);
+    } finally {
+      delete process.env.BILLING_TAX_ENABLED;
+      await org.cleanup();
+    }
+  });
+
+  // A second Checkout Session against the same customer opens a SECOND
+  // subscription. The webhook then overwrites organizations.subscription_id and
+  // orphans the first one, which keeps billing with nothing pointing at it.
+  it.each(['active', 'past_due', 'unpaid'])(
+    'refuses with 409 when the org is already %s',
+    async (status) => {
+      const org = await withTestOrg();
+      try {
+        await supabase
+          .from('organizations')
+          .update({ subscription_id: 'sub_test_existing', subscription_status: status })
+          .eq('id', org.organizationId);
+        sessionMock.mockClear();
+
+        const res = await checkout(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          tier: 'growth',
+          period: 'monthly',
+          seat_count: 8,
+        });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatch(/already has a subscription/i);
+        expect(sessionMock).not.toHaveBeenCalled();
+      } finally {
+        await org.cleanup();
+      }
+    },
+  );
+
+  it('still sells to an org whose old subscription is canceled', async () => {
+    const org = await withTestOrg();
+    try {
+      await supabase
+        .from('organizations')
+        .update({ subscription_id: 'sub_test_dead', subscription_status: 'canceled' })
+        .eq('id', org.organizationId);
+
+      const res = await checkout(org.admin.accessToken, {
+        organization_id: org.organizationId,
+        tier: 'starter',
+        period: 'monthly',
+        seat_count: 3,
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('403s, not 404s, for an org the caller does not belong to', async () => {
+    // The membership check runs first, so an outsider never learns whether the
+    // organization exists, let alone whether it is paying. The route's 404 branch
+    // is reachable only if the row disappears between the two reads.
+    const org = await withTestOrg();
+    try {
+      const res = await checkout(org.admin.accessToken, {
+        organization_id: crypto.randomUUID(),
+        tier: 'starter',
+        period: 'monthly',
+        seat_count: 3,
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
   it('works for a frozen org, because a frozen org must be able to pay', async () => {
     process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
     const org = await withTestOrg({

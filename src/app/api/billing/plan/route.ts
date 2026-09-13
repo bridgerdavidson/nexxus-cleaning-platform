@@ -17,7 +17,11 @@ import {
   retrieveSubscription,
   updateSubscriptionItems,
 } from '@/lib/stripe/billing';
-import { appendBillingEvent, buildBillingCheckoutSession } from '@/lib/payments/orgBilling';
+import {
+  appendBillingEvent,
+  buildBillingCheckoutSession,
+  readLiveSubscription,
+} from '@/lib/payments/orgBilling';
 import { countSeatsInUse } from '@/lib/billing/seats';
 import {
   diffSubscriptionItems,
@@ -27,9 +31,6 @@ import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/bill
 import { seatLookupKeyFor, tierFor } from '@/lib/billing/plans';
 
 export const runtime = 'nodejs';
-
-/** Statuses that mean there is a subscription to change rather than one to buy. */
-const LIVE_STATUSES = ['active', 'past_due', 'unpaid'];
 
 const SEAT_LOOKUP_KEYS: string[] = [seatLookupKeyFor('monthly'), seatLookupKeyFor('annual')];
 
@@ -95,23 +96,17 @@ export async function POST(request: NextRequest) {
     const usageError = seatsInUseError(seatCount, seatsInUse);
     if (usageError) return NextResponse.json({ error: usageError }, { status: 400 });
 
-    const { data: org, error: orgError } = await supabaseAdmin
-      .from('organizations')
-      .select('subscription_id, subscription_status')
-      .eq('id', organizationId)
-      .maybeSingle();
-
-    if (orgError) return NextResponse.json({ error: orgError.message }, { status: 500 });
-    if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
-
-    const subscriptionId = org.subscription_id as string | null;
-    const hasLiveSub =
-      Boolean(subscriptionId) && LIVE_STATUSES.includes(org.subscription_status as string);
+    // The same read the checkout route uses, read in the opposite direction:
+    // checkout refuses when this is true, this route falls back when it is false.
+    const live = await readLiveSubscription(supabaseAdmin, organizationId);
+    if (!live.found) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
 
     // No live subscription (trialing, trial_expired, canceled, or no id at all):
     // send them to checkout instead of erroring, so the client has one entry
     // point for "change my plan".
-    if (!hasLiveSub) {
+    if (!live.hasLiveSub) {
       const { sessionId, checkoutUrl } = await buildBillingCheckoutSession(
         supabaseAdmin,
         organizationId,
@@ -126,12 +121,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: { checkout_url: checkoutUrl } });
     }
 
-    const sub = await retrieveSubscription(subscriptionId!);
+    const subscriptionId = live.subscriptionId!;
+    const sub = await retrieveSubscription(subscriptionId);
     const current = readCurrentItems(sub);
     const prices = await resolvePrices();
     const items = diffSubscriptionItems(current, { tier, period, seatCount }, prices);
 
-    await updateSubscriptionItems(subscriptionId!, items, organizationId);
+    await updateSubscriptionItems(subscriptionId, items, organizationId);
 
     // Mirror immediately so the UI does not lag; the customer.subscription.updated
     // webhook is the real source of truth and overwrites these within seconds.

@@ -6,7 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { appendBillingEvent, buildBillingCheckoutSession } from '@/lib/payments/orgBilling';
+import {
+  appendBillingEvent,
+  buildBillingCheckoutSession,
+  readLiveSubscription,
+} from '@/lib/payments/orgBilling';
 import { countSeatsInUse } from '@/lib/billing/seats';
 import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
 
@@ -31,6 +35,23 @@ export async function POST(request: NextRequest) {
       allowedRoles: ['owner', 'admin'],
     });
     if (!auth.ok) return auth.response;
+
+    // Refuse an org that is already subscribed. A second Checkout Session against
+    // the same customer opens a SECOND subscription; the webhook then overwrites
+    // organizations.subscription_id and orphans the first one, which goes on
+    // billing the customer with nothing in our database pointing at it. Checked
+    // before the seat rules so an already-subscribed org is told the useful
+    // thing rather than being sent to fix a seat count it does not need.
+    const live = await readLiveSubscription(supabaseAdmin, organizationId);
+    if (!live.found) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+    if (live.hasLiveSub) {
+      return NextResponse.json(
+        { error: 'This organization already has a subscription. Change your plan instead.' },
+        { status: 409 },
+      );
+    }
 
     const { tier, period, seatCount } = parsed.selection;
 
