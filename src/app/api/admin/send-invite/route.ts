@@ -246,10 +246,29 @@ export async function POST(request: NextRequest) {
       // like assertOrgWritable failing open.
       if (billingRow) {
         const access = deriveBillingAccess(billingRow as unknown as OrgBillingRow, new Date());
-        const seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId);
+
+        // Exclude this invite's own address: a resend supersedes the pending row
+        // and promotes a new one, so it consumes no additional seat and must not
+        // be refused at full occupancy.
+        //
+        // Fail open if the count cannot be taken, matching assertOrgWritable and
+        // the billingRow fetch above. The spec already accepts an over-cap race
+        // at cap-minus-one, so admitting one extra seat during a database
+        // incident is the same trade, while blocking a paying customer's invite
+        // is a visible outage. Seats are billed as purchased, not used, so
+        // revenue is unaffected and the next invite is capped normally.
+        let seatsInUse: number | null = null;
+        try {
+          seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId, normalizedEmail);
+        } catch (seatCountError) {
+          console.error(
+            'send-invite: seat count failed, allowing the invite',
+            (seatCountError as Error).message,
+          );
+        }
 
         // A comped org has a null cap, which means unlimited, never zero.
-        if (!seatCapDecision({ seatCap: access.seatCap, seatsInUse }).allowed) {
+        if (seatsInUse !== null && !seatCapDecision({ seatCap: access.seatCap, seatsInUse }).allowed) {
           const currentTier = ((billingRow as unknown as OrgBillingRow).plan_tier as PlanTier | null) ?? null;
           return NextResponse.json(
             {

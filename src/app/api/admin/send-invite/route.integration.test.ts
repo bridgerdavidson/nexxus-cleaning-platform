@@ -9,7 +9,15 @@ vi.mock('@/lib/email/sendEmail', () => ({
   emailConfigured: vi.fn(() => false),
 }));
 
+// Delegates to the real seat counter, so behavior is unchanged everywhere; the
+// fail-open case below overrides it for a single call.
+vi.mock('@/lib/billing/seats', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/billing/seats')>();
+  return { ...actual, countSeatsInUse: vi.fn(actual.countSeatsInUse) };
+});
+
 import { sendEmail, emailConfigured } from '@/lib/email/sendEmail';
+import { countSeatsInUse } from '@/lib/billing/seats';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
@@ -586,13 +594,20 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
       .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
   }
 
-  /** One invite with a unique email, sent by the owner unless a token is given. */
-  async function sendInvite(role: 'cleaner' | 'manager', accessToken?: string) {
+  /**
+   * One invite, from the owner to a fresh address unless overridden. Pass the
+   * same `email` twice to model the operator UI's Resend button, which posts
+   * here again.
+   */
+  async function sendInvite(
+    role: 'cleaner' | 'manager',
+    opts: { accessToken?: string; email?: string } = {},
+  ) {
     return callRoute<SeatCapBody>(POST, {
       method: 'POST',
-      headers: bearerHeader(accessToken ?? owner!.accessToken),
+      headers: bearerHeader(opts.accessToken ?? owner!.accessToken),
       body: {
-        email: `seat-${randomUUID().slice(0, 8)}@test.local`,
+        email: opts.email ?? `seat-${randomUUID().slice(0, 8)}@test.local`,
         role,
         organizationId: org!.organizationId,
       },
@@ -734,7 +749,7 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
     const inviteSpy = mockInviteMailer();
     await purchaseSeats(1);
 
-    const { status, body } = await sendInvite('cleaner', manager.accessToken);
+    const { status, body } = await sendInvite('cleaner', { accessToken: manager.accessToken });
 
     expect(status).toBe(409);
     expect(body.error).toBe('seat_cap_reached');
@@ -764,5 +779,62 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
 
     expect(status).toBe(400);
     expect(body.error).toBe('Missing required fields');
+  });
+
+  /**
+   * Resend posts to this same route, and the operator UI offers it for any
+   * pending invite. The resend supersedes the pending row and promotes a new
+   * one, so the pending count is unchanged and no additional seat is consumed.
+   * Counting the invite being resent would refuse it at full occupancy and tell
+   * the operator to buy a seat for an invite that needs none, which is the
+   * steady state for an org that bought exactly what it uses.
+   */
+  it('does not count the invite being resent, so a resend at full occupancy goes out', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    await purchaseSeats(2);
+
+    // One cleaner member + this pending invite = 2 = the cap.
+    const email = `resend-${randomUUID().slice(0, 8)}@test.local`;
+    expect((await sendInvite('cleaner', { email })).status).toBe(200);
+
+    // The resend itself.
+    expect((await sendInvite('cleaner', { email })).status).toBe(200);
+
+    // Still exactly one pending row for that address: it replaced, not added.
+    const db = createTestSupabaseClient();
+    const { data: pending } = await db
+      .from('invites')
+      .select('id')
+      .eq('organization_id', org.organizationId)
+      .eq('email', email)
+      .eq('status', 'pending');
+    expect((pending ?? []).length).toBe(1);
+
+    // A NEW address at the same occupancy is still refused.
+    const { status, body } = await sendInvite('cleaner');
+    expect(status).toBe(409);
+    expect(body.in_use).toBe(2);
+  });
+
+  /**
+   * Fail open on a counting error, like assertOrgWritable and the billing-row
+   * fetch beside it. The spec already accepts an over-cap race at cap-minus-one,
+   * so one extra seat during a database incident is the same trade, while
+   * blocking a paying customer's invite is a visible outage. The org here is
+   * exactly at its cap, so only the failure can let this invite through.
+   */
+  it('allows the invite when the seat count cannot be taken', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    mockInviteMailer();
+    await purchaseSeats(1);
+    vi.mocked(countSeatsInUse).mockRejectedValueOnce(new Error('connection reset'));
+
+    const { status } = await sendInvite('cleaner');
+    expect(status).toBe(200);
   });
 });

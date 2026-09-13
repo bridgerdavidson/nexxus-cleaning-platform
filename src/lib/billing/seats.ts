@@ -13,23 +13,40 @@ import { PLANS, PLAN_TIERS, type PlanTier } from './plans';
  * Only `pending` invites reserve a seat. `creating` is transient with no way to
  * clear a stuck row, so counting it would let one failed send consume a seat
  * permanently.
+ *
+ * `excludeEmail` leaves one address out of the PENDING-INVITE count only, never
+ * out of the member count. Resending an invite posts to the same route, and it
+ * supersedes the old pending row and promotes a new one, so the pending count is
+ * unchanged by the operation. Counting the very invite being resent would refuse
+ * a resend at full occupancy and tell the operator to buy a seat for an invite
+ * that consumes none, which is the steady state for purchased seats, not an edge
+ * case. Pass the same normalized address the invite row is keyed by.
  */
 export async function countSeatsInUse(
   supabaseAdmin: SupabaseClient,
   organizationId: string,
+  excludeEmail?: string,
 ): Promise<number> {
+  let pendingInvites = supabaseAdmin
+    .from('invites')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
+    .eq('role', 'cleaner')
+    .eq('status', 'pending');
+
+  if (excludeEmail) {
+    pendingInvites = pendingInvites.neq('email', excludeEmail);
+  }
+
   const [members, invites] = await Promise.all([
+    // Deliberately NOT filtered by excludeEmail: a member holds a seat whoever
+    // the current request is about, and organization_members has no email column.
     supabaseAdmin
       .from('organization_members')
       .select('user_id', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
       .eq('role', 'cleaner'),
-    supabaseAdmin
-      .from('invites')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', organizationId)
-      .eq('role', 'cleaner')
-      .eq('status', 'pending'),
+    pendingInvites,
   ]);
 
   if (members.error) throw new Error(members.error.message);
