@@ -557,14 +557,16 @@ describe('POST /api/admin/send-invite (org-branded delivery)', () => {
 describe('POST /api/admin/send-invite (purchased seat cap)', () => {
   let org: TestOrgFixture | null = null;
   let owner: OwnerMemberHandle | null = null;
+  let manager: ManagerMemberHandle | null = null;
 
   afterEach(async () => {
     delete process.env.BILLING_ENFORCEMENT_ENABLED;
     vi.restoreAllMocks();
-    await owner?.cleanup();
+    await Promise.all([owner?.cleanup(), manager?.cleanup()]);
     await org?.cleanup();
     org = null;
     owner = null;
+    manager = null;
   });
 
   interface SeatCapBody {
@@ -584,11 +586,11 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
       .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
   }
 
-  /** One owner-sent invite with a unique email. */
-  async function sendInvite(role: 'cleaner' | 'manager') {
+  /** One invite with a unique email, sent by the owner unless a token is given. */
+  async function sendInvite(role: 'cleaner' | 'manager', accessToken?: string) {
     return callRoute<SeatCapBody>(POST, {
       method: 'POST',
-      headers: bearerHeader(owner!.accessToken),
+      headers: bearerHeader(accessToken ?? owner!.accessToken),
       body: {
         email: `seat-${randomUUID().slice(0, 8)}@test.local`,
         role,
@@ -611,6 +613,19 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
       })
       .eq('id', org!.organizationId);
     if (error) throw new Error(`failed to set purchased seats: ${error.message}`);
+  }
+
+  /** An expired trial, which is the frozen state. */
+  async function freezeOrg() {
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({
+        comped_at: null,
+        subscription_status: 'trialing',
+        trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+      })
+      .eq('id', org!.organizationId);
   }
 
   it('refuses a cleaner invite at the cap with 409 and the upgrade hint', async () => {
@@ -690,15 +705,7 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
     org = await withTestOrg();
     owner = await addOwnerToOrg(org.organizationId);
     mockInviteMailer();
-    const db = createTestSupabaseClient();
-    await db
-      .from('organizations')
-      .update({
-        comped_at: null,
-        subscription_status: 'trialing',
-        trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
-      })
-      .eq('id', org.organizationId);
+    await freezeOrg();
 
     const { status, body } = await sendInvite('cleaner');
     expect(status).toBe(402);
@@ -713,5 +720,49 @@ describe('POST /api/admin/send-invite (purchased seat cap)', () => {
 
     const { status } = await sendInvite('cleaner');
     expect(status).toBe(200);
+  });
+
+  /**
+   * The cap lives after the shared authorization gate, so it applies to every
+   * caller who may invite a cleaner, not just owners. Asserted explicitly so a
+   * future refactor cannot quietly exempt managers.
+   */
+  it('caps a manager with can_manage_cleaners too', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    manager = await addManagerToOrg(org.organizationId, { can_manage_cleaners: true });
+    const inviteSpy = mockInviteMailer();
+    await purchaseSeats(1);
+
+    const { status, body } = await sendInvite('cleaner', manager.accessToken);
+
+    expect(status).toBe(409);
+    expect(body.error).toBe('seat_cap_reached');
+    expect(inviteSpy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Ordering lock: request validation runs BEFORE billing. A malformed request
+   * is malformed whatever the org's billing state is, so it must keep answering
+   * 400. Without this, flipping BILLING_ENFORCEMENT_ENABLED would turn a bad
+   * request's 400 into a 402 in production and nowhere else.
+   */
+  it('still returns 400 for a missing field while the org is frozen', async () => {
+    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    await freezeOrg();
+
+    // Same frozen org, valid body: proof the freeze really is in force here.
+    expect((await sendInvite('cleaner')).status).toBe(402);
+
+    const { status, body } = await callRoute<SeatCapBody>(POST, {
+      method: 'POST',
+      headers: bearerHeader(owner.accessToken),
+      body: { role: 'cleaner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(400);
+    expect(body.error).toBe('Missing required fields');
   });
 });

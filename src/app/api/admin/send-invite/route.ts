@@ -92,46 +92,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Billing: frozen org first, then the purchased-seat cap ─────────────
-    // Order matters: a frozen org gets 402 rather than a confusing 409 about
-    // seats it cannot buy until it unfreezes. Both run before any invite row
-    // exists, so a refused invite leaves nothing behind.
-    const writable = await assertOrgWritable(supabaseAdmin, organizationId);
-    if (!writable.ok) return writable.response;
-
-    // Purchased seats: only cleaners consume one, and only pending invites
-    // reserve one. The flag gates the whole block so the off path costs no
-    // extra queries at all.
-    if (billingEnforcementEnabled() && role === 'cleaner') {
-      const { data: billingRow } = await supabaseAdmin
-        .from('organizations')
-        .select(ORG_BILLING_COLUMNS)
-        .eq('id', organizationId)
-        .maybeSingle();
-
-      // No row means a bad org id; let the route's own handling answer, exactly
-      // like assertOrgWritable failing open.
-      if (billingRow) {
-        const access = deriveBillingAccess(billingRow as unknown as OrgBillingRow, new Date());
-        const seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId);
-
-        // A comped org has a null cap, which means unlimited, never zero.
-        if (!seatCapDecision({ seatCap: access.seatCap, seatsInUse }).allowed) {
-          const currentTier = ((billingRow as unknown as OrgBillingRow).plan_tier as PlanTier | null) ?? null;
-          return NextResponse.json(
-            {
-              error: 'seat_cap_reached',
-              cap: access.seatCap,
-              in_use: seatsInUse,
-              tier: currentTier,
-              next_tier: nextTierFor(seatsInUse, currentTier),
-            },
-            { status: 409 },
-          );
-        }
-      }
-    }
-
     // ── Input validation ─────────────────────────────────────────────────────
     if (!email || !role || !organizationId) {
       return NextResponse.json(
@@ -256,6 +216,52 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
+      }
+    }
+
+    // ── Billing: frozen org first, then the purchased-seat cap ─────────────
+    // Placed as late as possible while still being ahead of every mutation: the
+    // whole request has been validated by here (400s and the 403 role ceiling
+    // have already answered), and nothing has been created, emailed, or deleted
+    // yet. Validation must come first or flipping BILLING_ENFORCEMENT_ENABLED
+    // would silently turn a malformed request's 400 into a 402 or 409, a
+    // behavior change that would appear only in production at the flag flip.
+    //
+    // Order inside: a frozen org gets 402 rather than a confusing 409 about
+    // seats it cannot buy until it unfreezes.
+    const writable = await assertOrgWritable(supabaseAdmin, organizationId);
+    if (!writable.ok) return writable.response;
+
+    // Purchased seats: only cleaners consume one, and only pending invites
+    // reserve one. The flag gates the whole block so the off path costs no
+    // extra queries at all.
+    if (billingEnforcementEnabled() && role === 'cleaner') {
+      const { data: billingRow } = await supabaseAdmin
+        .from('organizations')
+        .select(ORG_BILLING_COLUMNS)
+        .eq('id', organizationId)
+        .maybeSingle();
+
+      // No row means a bad org id; let the route's own handling answer, exactly
+      // like assertOrgWritable failing open.
+      if (billingRow) {
+        const access = deriveBillingAccess(billingRow as unknown as OrgBillingRow, new Date());
+        const seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId);
+
+        // A comped org has a null cap, which means unlimited, never zero.
+        if (!seatCapDecision({ seatCap: access.seatCap, seatsInUse }).allowed) {
+          const currentTier = ((billingRow as unknown as OrgBillingRow).plan_tier as PlanTier | null) ?? null;
+          return NextResponse.json(
+            {
+              error: 'seat_cap_reached',
+              cap: access.seatCap,
+              in_use: seatsInUse,
+              tier: currentTier,
+              next_tier: nextTierFor(seatsInUse, currentTier),
+            },
+            { status: 409 },
+          );
+        }
       }
     }
 
