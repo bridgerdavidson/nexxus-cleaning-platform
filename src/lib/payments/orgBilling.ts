@@ -166,8 +166,7 @@ export async function appendBillingEvent(
 
 export interface BillingCheckoutResult {
   sessionId: string;
-  /** Stripe types this nullable; a subscription-mode session always has one. */
-  checkoutUrl: string | null;
+  checkoutUrl: string;
 }
 
 /**
@@ -202,5 +201,61 @@ export async function buildBillingCheckoutSession(
     cancelUrl: `${appUrl}/admin/settings?section=billing&checkout=canceled`,
   });
 
+  // Stripe types `url` as nullable (it is null for a session in a mode that has
+  // no hosted page). Returning that verbatim would answer 200 with
+  // checkout_url: null, i.e. a Buy button that goes nowhere. Fail loudly so the
+  // caller sees a 500 instead.
+  if (!session.url) {
+    throw new Error('Stripe returned a Checkout Session with no URL.');
+  }
+
   return { sessionId: session.id, checkoutUrl: session.url };
+}
+
+/** Subscription statuses that mean there is a subscription to change, not one to buy. */
+export const LIVE_SUBSCRIPTION_STATUSES = ['active', 'past_due', 'unpaid'];
+
+export interface LiveSubscriptionLookup {
+  /** False when no organization row has this id. */
+  found: boolean;
+  subscriptionId: string | null;
+  status: string | null;
+  hasLiveSub: boolean;
+}
+
+/**
+ * Does this org already have a subscription Stripe is billing?
+ *
+ * Shared by both purchase routes, and they read it in opposite directions: the
+ * plan route falls back to Checkout when it is false, and the checkout route
+ * refuses with 409 when it is true. A second Checkout Session against the same
+ * customer would open a SECOND subscription, and the webhook would then
+ * overwrite organizations.subscription_id and orphan the first one, which keeps
+ * billing with nothing in our database pointing at it.
+ *
+ * Throws on a query error rather than reporting "no subscription": guessing
+ * wrong here is what causes the double charge.
+ */
+export async function readLiveSubscription(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<LiveSubscriptionLookup> {
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('subscription_id, subscription_status')
+    .eq('id', organizationId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return { found: false, subscriptionId: null, status: null, hasLiveSub: false };
+
+  const subscriptionId = (data.subscription_id as string | null) ?? null;
+  const status = (data.subscription_status as string | null) ?? null;
+
+  return {
+    found: true,
+    subscriptionId,
+    status,
+    hasLiveSub: Boolean(subscriptionId) && LIVE_SUBSCRIPTION_STATUSES.includes(status ?? ''),
+  };
 }
