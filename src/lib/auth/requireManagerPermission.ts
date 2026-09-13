@@ -8,6 +8,12 @@ export interface RequireManagerPermissionOptions {
    *  allowed roles pass WITHOUT the flag; only 'manager' is gated by it. */
   allowedRoles?: OrgRole[];
   errorMessage?: string;
+  /**
+   * Forwarded straight into requireOrgAuth, so a frozen organization gets its
+   * 402 before the manager_permissions lookup is paid for. No-op while
+   * BILLING_ENFORCEMENT_ENABLED is off.
+   */
+  requireWritable?: boolean;
 }
 
 /**
@@ -24,7 +30,10 @@ export async function requireManagerPermission(
   options: RequireManagerPermissionOptions = {},
 ): Promise<RequireOrgAuthResult> {
   const allowedRoles = options.allowedRoles ?? ['owner', 'admin', 'manager'];
-  const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, { allowedRoles });
+  const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+    allowedRoles,
+    requireWritable: options.requireWritable,
+  });
   if (!auth.ok) return auth;
 
   if (auth.role === 'manager') {
