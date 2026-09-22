@@ -342,6 +342,96 @@ Existing handlers in `dispatchStripeEvent.ts` (`customer.subscription.created|up
 
 Ops (§20): the live-mode webhook endpoint must have all six events enabled.
 
+### 10.8 Accepted payment methods
+
+Added 2026-09-22 after the PR F design session. The spec was previously silent on this,
+which meant we would have shipped whatever the Stripe Dashboard happened to have enabled.
+
+**Wallets (Apple Pay, Google Pay, Link): on, and nothing to build.**
+
+`createBillingCheckoutSession` deliberately passes no `payment_method_types`, so dynamic
+payment methods are active and Stripe decides per device. For this integration path Stripe
+documents that "Stripe.js detects and supports the following wallets based on the state of
+your device", and per wallet, "If you don't meet device and integration requirements, Stripe
+doesn't show Apple Pay as a payment option." A Windows user therefore never sees Apple Pay;
+no defensive code is required.
+
+| Buyer's setup | Wallet offered |
+|---|---|
+| iPhone / iPad, any browser on iOS 16+ | Apple Pay |
+| Mac, Safari (incl. no Touch ID, via paired iPhone or Watch) | Apple Pay |
+| Mac, Chrome | Google Pay |
+| Android, Chrome | Google Pay |
+| Windows, Chrome or Edge | Google Pay (never Apple Pay) |
+| Windows, Firefox | Card or Link only |
+
+Two consequences worth recording:
+
+- **No Apple Pay domain verification is required.** That is only needed for embedded Checkout
+  or Elements. Hosted Checkout renders on `checkout.stripe.com`, which Stripe has already
+  registered. The only ops step is enabling the wallets in the Dashboard payment method
+  configuration (§20).
+- **Wallet ordering is not merchant-controllable** on hosted Checkout; Dashboard payment
+  method rules explicitly exclude wallets. We therefore cannot act on the finding that
+  *defaulting* to a wallet outperforms merely offering it. Accepted as a consequence of
+  keeping hosted Checkout (PR F ruling R10).
+
+**ACH Direct Debit (`us_bank_account`): deliberately OFF, and explicitly excluded in code.**
+
+ACH is fully supported for `mode: 'subscription'`, and because we pass no
+`payment_method_types`, enabling it in the Dashboard would turn it on in production **with
+zero code change**. That is a footgun, and it is most likely to be tripped during the very
+ops step that enables the wallets, since both live on the same Dashboard screen.
+
+It is off because it would silently break the paywall. Stripe Billing documents that with
+ACH a subscription "can move directly to `active` after creation and bypass `incomplete`. If
+the payment fails later, Stripe voids the invoice but the subscription remains `active`."
+ACH settles at T+4 business days, and a consumer bank account can return the debit for up to
+60 days. So `subscription_status === 'active'`, which §7's state machine treats as proof of
+payment, would stop meaning paid and would stay wrong after a failure. We would unfreeze an
+account with no mechanism to re-freeze it.
+
+The saving does not justify that: $13 to $46 per customer per year at our prices, against a
+$4 NSF fee that erases three months of it and a $15 dispute that erases thirteen months plus
+the revenue.
+
+**Therefore:** `createBillingCheckoutSession` passes
+`excluded_payment_method_types: ['us_bank_account']`. This is the Stripe-sanctioned way to
+narrow methods (`payment_method_types` remains forbidden), it is greppable, and it survives a
+Dashboard change. Verified present in the pinned SDK at
+`node_modules/stripe/types/Checkout/SessionsResource.d.ts:124`.
+
+**To enable ACH later**, these nine changes are required. Do not enable it without them:
+
+1. Stop treating `subscription_status = 'active'` as paid; add a payment dimension driven by
+   the PaymentIntent.
+2. Provisional unfreeze on `payment_intent.processing` with a hard ~6-business-day horizon,
+   then re-freeze if it has not settled.
+3. Wire `invoice.payment_failed` to access. Today it records an audit row and deliberately
+   does not touch access (`dispatchStripeEvent.ts:1900` says so explicitly).
+4. Route **subscription** disputes separately from job-charge disputes. We do handle
+   `charge.dispute.created` (`dispatchStripeEvent.ts:57`), but that handler maps to a
+   `payments` row; a subscription dispute finds no match and falls through to
+   `unmatched_dispute` with a console warning. A `us_bank_account` dispute must re-freeze the
+   org, clear the payment method (the Nacha mandate dies with the dispute), and alert.
+5. Handle `payment_method.automatically_updated` for blocked bank accounts.
+6. Extend `reconcileBillingMirror` to check `latest_invoice` and PaymentIntent status, not
+   just subscription status.
+7. Turn on Direct Debit retries (2 tries / 40 days / NSF only) and re-tune dunning; a 14-day
+   card schedule is wrong for a 40-day ACH cycle.
+8. Switch plan-change upgrades to `always_invoice` plus **pending updates**. Today
+   `create_prorations` charges immediately, so a failed ACH would flip the org to `past_due`
+   four days after we told them the upgrade worked.
+9. Keep hosted Checkout (it collects and stores the Nacha mandate, emails confirmation, and
+   auto-answers proof-of-authorization inquiries) and do not disable Stripe's customer
+   emails, or we inherit the mandate and microdeposit email duty ourselves.
+
+Unverified and to be settled by a sandbox test before any ACH work: whether partial refunds
+are genuinely unavailable for ACH (Stripe's capability table shows "Partial refunds: no",
+which would block pro-rata refunds), and the T+2 eligibility for the fee cap. Note that
+sandbox ACH settles instantly, so a green sandbox test proves nothing about timing; use the
+`pm_usBankAccount_*` test payment methods and record the actual webhook sequence.
+
 ## 11. Enforcement
 
 ### 11.1 The guard
@@ -522,8 +612,9 @@ No change. Nothing a cleaner does creates new work.
 6. **Stripe Tax:** set the head-office address so nexus monitoring runs from day one; choose the SaaS product tax code **with an accountant from Stripe's canonical tax-code list** (never guessed) and set it on the four Products; add registrations where required. Only then set `BILLING_TAX_ENABLED=true`, which adds `automatic_tax` to Checkout and subscriptions. Until a registration exists, Stripe Tax silently collects nothing, so the flag stays off.
 7. In the roster's comped filter, confirm the Nexxus Core pilot and every other pre-existing org show as comped (the §5.3 migration did this; nothing to click). Un-comp any internal test org you want on a real trial, giving it a runway.
 8. On your own test org: full checkout, change plan, portal cancel, pause/resume. Watch the timeline.
-9. Set `BILLING_ENFORCEMENT_ENABLED=true` and `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` in Vercel prod. Redeploy.
-10. Decide and log the **refund policy** in the pricing doc (Jobber: none prorated; Housecall Pro: 30-day money-back). Refunds themselves are Dashboard actions.
+9. **Payment method configuration** (§10.8). Enable **Apple Pay, Google Pay and Link**; hosted Checkout hides each one automatically on devices that cannot use it, and needs **no Apple Pay domain verification** because the page renders on `checkout.stripe.com`. ⚠️ **Do NOT enable ACH Direct Debit on this screen.** It is supported for subscriptions and we pass no `payment_method_types`, so enabling it here would turn it on in production with zero code change and silently break the paywall (an ACH subscription stays `active` after a failed debit). The Checkout Session passes `excluded_payment_method_types: ['us_bank_account']` as a belt-and-braces guard; §10.8 lists the nine changes required before ACH can ever be switched on.
+10. Set `BILLING_ENFORCEMENT_ENABLED=true` and `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` in Vercel prod. Redeploy.
+11. Decide and log the **refund policy** in the pricing doc (Jobber: none prorated; Housecall Pro: 30-day money-back). Refunds themselves are Dashboard actions.
 
 ## 21. Out of scope / follow-ups
 
@@ -535,6 +626,13 @@ No change. Nothing a cleaner does creates new work.
 - **Atomic service-with-checklists RPC.**
 - **Self-serve pause** inside a cancellation flow.
 - **Annual prepay by invoice** (`collection_method: send_invoice`), referral credits, role-split back-office permissions.
+- **ACH Direct Debit for subscriptions.** Deferred 2026-09-22 with the reasoning, the fee
+  arithmetic and the nine prerequisite changes recorded in §10.8. Worth revisiting once annual
+  plans carry volume, where the saving is $23 to $44 per invoice rather than $13 to $46 a year.
+- **Annual renewal reminder email** (15 to 45 days before renewal). Required for auto-renewing
+  subscriptions by California's Automatic Renewal Law, which is in force and is not affected by
+  the vacated federal click-to-cancel rule. This is an email, so it belongs with the Phase 3
+  sequence, but it is a compliance obligation rather than a nice-to-have and currently has no owner.
 - **Platform suspend independent of Stripe.** A `suspended_at` stamp set from the back office, frozen at the same precedence as `paused`, for abuse or non-payment on a trialing or comped org. Phase 1 has no lever to shut off an org that has no subscription other than deleting it.
 - **Manual plan or seat override** for a tenant that pays by invoice or check. Phase 1 truths `plan_tier` and `seat_count` from webhooks only; comp covers these tenants until this exists.
 

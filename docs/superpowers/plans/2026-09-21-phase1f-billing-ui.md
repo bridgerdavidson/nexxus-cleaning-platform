@@ -62,6 +62,7 @@ Settled during the design session. Implementers must not re-litigate these; they
 | R17 | The seat dialog shows the **new monthly total**, not just the delta | Silent or vague seat charges are what generated public complaints against ClickUp and Loom |
 | R18 | The homeowner block message gives a **route around the block** (the company's own phone), never mentions billing, and never 404s | No vendor does this well. Shopify makes the storefront vanish; GoDaddy's parked page looks hacked |
 | R19 | The billing query opts into `refetchOnWindowFocus: true` **locally**. Do not change the global default | Global is `false` (`src/lib/queryClient.ts:7`) by design. Without the local opt-in, a past_due banner stays on screen after the user has already paid in the Stripe tab |
+| R20 | Wallets on, **ACH explicitly excluded** in the Checkout Session | ACH is supported for subscriptions and we pass no `payment_method_types`, so a Dashboard toggle would enable it in production with zero code change. An ACH subscription stays `active` after a failed debit, which would unfreeze an org we could not re-freeze. Spec §10.8 |
 
 ---
 
@@ -108,7 +109,7 @@ Settled during the design session. Implementers must not re-litigate these; they
 
 ## Task List
 
-Fourteen tasks. Tasks 1 and 2 are independent and may be batched into one dispatch.
+Fifteen tasks. Tasks 1 and 2 are independent and may be batched into one dispatch. Task 15 is independent of all the others and may run at any point.
 
 ---
 
@@ -1997,6 +1998,80 @@ git commit -m "test(billing): cover the paywall escape hatch end to end"
 
 ---
 
+### Task 15: Exclude ACH from the Checkout Session **[Opus]**
+
+Two lines of money code, but they close a live footgun, so they get their own review.
+
+ACH Direct Debit is fully supported for `mode: 'subscription'`. Because
+`createBillingCheckoutSession` passes no `payment_method_types` (correct, and required by the
+Stripe guidance), **enabling ACH in the Stripe Dashboard would turn it on in production with
+zero code change.** The ops checklist tells Bridger to enable Apple Pay and Google Pay on
+exactly that Dashboard screen, so this is a realistic misfire, not a hypothetical one.
+
+It must stay off because it would silently break the paywall. Stripe Billing documents that
+with ACH a subscription "can move directly to `active` after creation and bypass
+`incomplete`. If the payment fails later, Stripe voids the invoice but the subscription
+remains `active`." ACH settles at T+4 business days and a consumer account can return the
+debit for up to 60 days, so `subscription_status === 'active'`, which `deriveBillingAccess`
+treats as proof of payment, would stop meaning paid and stay wrong after failure.
+
+**Files:**
+- Modify: `src/lib/stripe/billing.ts` (`createBillingCheckoutSession`, near line 159)
+- Modify: `src/lib/stripe/billing.test.ts` or the nearest existing wrapper test
+
+- [ ] **Step 1: Write the failing assertion**
+
+Add to the existing `createBillingCheckoutSession` wrapper test, which already pins the
+Stripe payload:
+
+```ts
+it('excludes ACH so a Dashboard toggle cannot silently enable it', async () => {
+  await createBillingCheckoutSession(validInput)
+  const params = sessionsCreate.mock.calls[0][0]
+  expect(params.excluded_payment_method_types).toEqual(['us_bank_account'])
+  // Still no payment_method_types: dynamic payment methods stay on, so wallets work.
+  expect(params).not.toHaveProperty('payment_method_types')
+})
+```
+
+- [ ] **Step 2: Run it and verify it fails**
+
+Run: `npx vitest run src/lib/stripe/billing.test.ts`
+Expected: FAIL, `excluded_payment_method_types` is undefined
+
+- [ ] **Step 3: Implement**
+
+In the params object inside `createBillingCheckoutSession`, beside `billing_address_collection`:
+
+```ts
+    // ACH Direct Debit is deliberately excluded. It IS supported for subscriptions, and
+    // because we pass no payment_method_types, enabling it in the Dashboard would turn it
+    // on here with no code change. An ACH subscription stays `active` after a failed debit
+    // (Stripe voids the invoice but not the subscription), and settlement is T+4 with a
+    // 60-day consumer return window, so the paywall would unfreeze an org it could never
+    // re-freeze. Spec §10.8 lists the nine changes required before this line may be removed.
+    excluded_payment_method_types: ['us_bank_account'],
+```
+
+Do **not** reach for `payment_method_types` instead. That parameter is forbidden: it disables
+dynamic payment methods and would take the wallets down with it.
+Verified present in the pinned SDK at
+`node_modules/stripe/types/Checkout/SessionsResource.d.ts:124`.
+
+- [ ] **Step 4: Run it and verify it passes**
+
+Run: `npx vitest run src/lib/stripe/billing.test.ts && npm run test:integration -- billing/checkout`
+Expected: PASS. The second command confirms the checkout route still builds a valid session.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/stripe/billing.ts src/lib/stripe/billing.test.ts
+git commit -m "fix(billing): exclude ACH from subscription Checkout"
+```
+
+---
+
 ## Out of scope for PR F
 
 Named so no implementer wanders into them:
@@ -2011,7 +2086,11 @@ Named so no implementer wanders into them:
 
 To be appended to the existing checklist in the Phase 1b ledger, not done in this PR:
 
-- **Enable Apple Pay, Google Pay and Link** in the Stripe Dashboard payment method configuration, and complete Apple Pay domain verification for the production domain. This is the single largest measured conversion lever found in the research (Stripe's own holdback puts Apple Pay at +22.3% conversion; a Wish A/B test found defaulting it doubled that gain again), our buyers are mobile-heavy, and it is configuration rather than code. We already omit `payment_method_types`, so dynamic payment methods will surface wallets once they are switched on.
+- **Enable Apple Pay, Google Pay and Link** in the Stripe Dashboard payment method configuration. Apple Pay is the largest measured conversion lever in the research (Stripe's own holdback: +22.3% conversion), our buyers are mobile-heavy, and this is configuration rather than code: we already omit `payment_method_types`, so dynamic payment methods surface the wallets once they are switched on.
+  - **No Apple Pay domain verification is required.** An earlier draft of this plan said otherwise and was wrong. Domain registration applies only to embedded Checkout and Elements; hosted Checkout renders on `checkout.stripe.com`, which Stripe has already registered.
+  - Stripe hides each wallet automatically on devices that cannot use it, so a Windows user never sees Apple Pay. No defensive code.
+  - Wallet **ordering is not merchant-controllable** on hosted Checkout, so the "default the wallet" finding is not actionable for us. Accepted consequence of ruling R10.
+  - ⚠️ **Do NOT enable ACH Direct Debit on the same screen.** See Task 15 and spec §10.8.
 - Verify that the amount shown by `/api/billing/plan/preview` matches the amount Stripe actually charges, by hand, in test mode, for a monthly to annual switch. Every Stripe call in our tests is mocked, so this arithmetic has never been checked against the real API.
 
 ## Self-Review
