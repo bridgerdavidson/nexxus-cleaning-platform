@@ -149,6 +149,36 @@ Numbers mirror the pricing doc exactly; change them only with a logged decision 
 
 ## 7. Billing access state machine
 
+### 7.1 Dunning ends in `canceled`, not `unpaid` (decided 2026-09-22)
+
+Stripe can end a failed dunning cycle either by marking the subscription `unpaid` or by
+cancelling it. **We cancel.** The reasoning, after review found that `unpaid` had no specified
+recovery path:
+
+- The only way out of `unpaid` is for the customer to pay the open invoice. That means a
+  customer who is lapsing *because they cannot afford the plan* must pay the old price before
+  they are allowed to move to a cheaper one, which is the case most likely to end in a support
+  ticket or a lost customer.
+- `canceled` is already frozen (§7), already shows the paywall (§13), and already routes to
+  Checkout, because `readLiveSubscription` reports no live subscription. A lapsed customer
+  therefore just buys again, at whatever tier they can afford, through a path that is built
+  and tested.
+- It removes an entire state's worth of UI from PR F (the Settings branch) and PR G (the back
+  office case), and removes the need to expose `latest_invoice.hosted_invoice_url` anywhere.
+
+**`unpaid` remains fully implemented and must stay that way.** It is in the CHECK constraint,
+`mapSubscriptionStatus` still emits it, and `deriveBillingAccess` still freezes on it. It is
+now a *defensive* state rather than an expected one: it can still arrive if the Dashboard
+setting is ever changed back, or on a subscription created before this decision. Treat any
+occurrence in production as a signal that the Dashboard config has drifted.
+
+Consequence for `POST /api/billing/plan`: the route refuses a plan change while the mirrored
+status is `past_due` or `unpaid`, with a 409 and "Please update your payment method before
+changing your plan." That is not a dead end. A `past_due` org is **not frozen** (§7), so it
+keeps working normally while Stripe retries, and its banner already tells it to fix the card.
+If the retries run out, the subscription cancels and the paywall's Checkout path takes over.
+
+
 `src/lib/billing/access.ts` — one pure function, unit-tested against fixed clocks. Every consumer (server guard, client hook, banner, paywall, back office) calls it. There is exactly one definition of "frozen."
 
 ```ts
@@ -468,7 +498,7 @@ No change. Nothing a cleaner does creates new work.
 **Ops (Bridger), after E–G are in prod and before the flag:**
 
 1. Run `scripts/stripe-billing-setup.ts` against test mode, then live.
-2. Stripe Dashboard → Billing → Manage failed payments: Smart Retries on; after final retry **mark subscription unpaid**; retry window ≈ 14 days.
+2. Stripe Dashboard → Billing → Manage failed payments: Smart Retries on; retry window ≈ 14 days; after the final retry **cancel the subscription** (NOT "mark unpaid"). **Changed 2026-09-22**, see §7.1.
 3. Automatic card updater on (verify). Customer emails on: failed payment, card expiring, upcoming renewal (annual), receipts.
 4. Live webhook endpoint: enable `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, `checkout.session.completed`.
 5. Portal branding (logo, colors) and public business info.
