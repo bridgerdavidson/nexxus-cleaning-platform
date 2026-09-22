@@ -104,7 +104,9 @@ Settled during the design session. Implementers must not re-litigate these; they
 | `src/components/redesign/settings/sections.ts` | Add the `billing` section id |
 | `src/components/redesign/settings/sections/registry.ts` | Register `BillingSection` |
 | `src/components/redesign/cleaners/OperatorCleaners.tsx` | "4 of 5 seats" indicator; open `SeatCapDialog` on 409 |
-| `src/hooks/useInvites.ts` | Surface the 409 seat-cap payload instead of toasting the raw code |
+| `src/hooks/useAdminData.ts` | `inviteTeamMember` returns the status and 409 body instead of collapsing them (this, NOT `useInvites.ts`, is the send path) |
+| `src/types/index.ts` | `Organization` gains `contact_phone` |
+| `supabase/migrations/<generated>_add_org_contact_phone.sql` | The column behind ruling R18 |
 | `src/components/redesign/homeowner/booking/useSubmitBookingRequest.ts` | Handle 402 with the R18 message |
 | `src/lib/queryKeys.ts` | Add `billing.preview(orgId, selection)` |
 
@@ -1416,6 +1418,23 @@ export function startCheckout(orgId: string, sel: PlanSelectionBody): Promise<{ 
   })
 }
 
+/**
+ * Stripe Customer Portal. NOTE the shape, verified 2026-09-22: the route is a
+ * GET, takes return_url, and returns `{ success, url }` with NO `data` envelope,
+ * unlike every other billing route. Do not route it through `call`, which would
+ * return undefined.
+ */
+export async function getPortalUrl(orgId: string, returnUrl: string): Promise<string> {
+  const token = await getAccessToken()
+  const qs = new URLSearchParams({ organization_id: orgId, return_url: returnUrl })
+  const res = await fetch(`/api/stripe/billing/portal-link?${qs}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  })
+  const json = (await res.json().catch(() => ({}))) as { error?: string; url?: string }
+  if (!res.ok || !json.url) throw new Error(json.error || 'Could not open the billing portal.')
+  return json.url
+}
+
 export async function extendTrial(orgId: string): Promise<void> {
   await call<unknown>('/api/billing/trial/extend', {
     method: 'POST',
@@ -1736,6 +1755,15 @@ Summary rail (**ruling R7**: itemise freely, but the total is always prominent):
 - Line, only when `preview.tax_excluded === false`: `Sales tax` and `formatCents(preview.tax_cents)`.
 - Total line, visually dominant: `Due today` and `formatCents(preview.due_now_cents)`.
 - Beneath: `Then {formatCents(recurring_cents)} on {formatBillingDate(next_charge_at)}.` plus `Cancel anytime.` **only when period === 'monthly'** (ruling R11).
+- **The total line's LABEL is driven by `preview.direction`** (ruling R21, and spec §10.4). PR E was corrected on 2026-09-22 so only upgrades invoice immediately:
+
+  | `direction` | Label | Amount |
+  |---|---|---|
+  | `upgrade` | `Charged today` | `formatCents(due_now_cents)` |
+  | `downgrade` | `Credited to your next invoice` | `formatCents(recurring_cents)` as the new recurring figure, and NO today figure |
+  | `unchanged` | `Your bill does not change` | no amount |
+
+  A blanket "Due today" is wrong for a downgrade, which bills nothing now and lands as credit. Writing it anyway is the surprise-at-checkout failure ruling R8 exists to prevent, pointed at ourselves.
 - When `preview.tax_excluded === true`, add the line `Sales tax is calculated at checkout.` This is the honesty valve for R8 when the tax flag is off.
 
 Preview wiring:
@@ -1965,6 +1993,8 @@ it('shows billing to owner and admin but not manager or cleaner', () => {
 
 Run: `npx vitest run src/components/redesign/settings/sections.test.ts`
 
+⚠ **This task BREAKS two existing assertions** in that file (around lines 18-27), which compare the derived section list against an exact array. Adding `billing` makes both fail. Update those expected arrays in the same commit; do not delete the assertions, they are what stops a section leaking to the wrong role.
+
 - [ ] **Step 3: Implement the eight branches**
 
 Follow `src/components/redesign/settings/sections/PaymentsSection.tsx` for structure, spacing and heading conventions. Every branch renders inside the same section shell.
@@ -1975,7 +2005,7 @@ Follow `src/components/redesign/settings/sections/PaymentsSection.tsx` for struc
 | `trial_expired` | Same controls, heading `Your trial has ended`, `caution` tone. Not alarming, just definite |
 | `active` | Plan card: tier badge, `formatCents(planChargeCents(...))` per period, `{seatsInUse} of {seat_count} seats in use`, `Renews on {formatBillingDate(currentPeriodEnd)}` (from `useBilling`, not from `billing.*`). When `subscription_cancel_at` is set, replace the renews line with `Cancels on {date}` in `caution` tone. Buttons: `Change plan` (opens `PlanPicker` with `submitLabel="Update plan"`), `Payment method and invoices` (portal) |
 | `past_due` | Everything `active` shows, plus a `critical` inline notice at the top: `We could not process your last payment.` Primary action becomes `Update payment method` (portal); `Change plan` demotes to secondary |
-| `unpaid` | Frozen plan card, `critical` tone. Primary `Reactivate` goes to the portal (the card needs fixing, not a new plan) |
+| `unpaid` | Frozen plan card, `critical` tone. Primary `Reactivate` goes to the portal (the card needs fixing, not a new plan). **Ruling R22: build this branch, but do not spend design effort on it.** Spec §7.1 changed dunning to end by cancelling, so a lapsed customer lands in `canceled` instead. Any `unpaid` org in production means the Stripe Dashboard config has drifted |
 | `canceled` | Frozen plan card. Primary `Choose a plan` opens `PlanPicker`, which will route to Checkout since there is no live subscription |
 | `paused` | `Your account is paused until {formatBillingDate(billing_pause_resumes_at)}. Contact us to resume early.` **No controls at all** |
 | `comped` | `Complimentary plan`, `{seatsInUse} seats in use`, no seat limit, **no controls** |
@@ -2005,7 +2035,7 @@ The friction moment that matters most. Resolved inline, never by sending them to
 **Files:**
 - Create: `src/components/redesign/billing/SeatCapDialog.tsx`
 - Modify: `src/components/redesign/cleaners/OperatorCleaners.tsx`
-- Modify: `src/hooks/useInvites.ts`
+- Modify: `src/hooks/useAdminData.ts` (**not** `useInvites.ts`, see below)
 
 **Interfaces:**
 - Consumes: `useBilling` (Task 5), `previewPlan`/`changePlan` (Task 5), `Dialog` from `@/components/ui/dialog`
@@ -2022,11 +2052,13 @@ The friction moment that matters most. Resolved inline, never by sending them to
   export function SeatCapDialog(props: SeatCapDialogProps): JSX.Element
   ```
 
-- [ ] **Step 1: Surface the 409 payload in `useInvites`**
+- [ ] **Step 1: Surface the 409 payload from the real send path**
 
-`POST /api/admin/send-invite` returns 409 with a seat-cap body when the org is at its cap (PR D, placed after request validation). Today the hook surfaces `result.error` straight into a toast, which would show a raw code like `seat_cap_reached` to an operator.
+⚠ **Revised 2026-09-22. The earlier draft named the wrong file.** `src/hooks/useInvites.ts` has no send mutation at all; it only handles `resend`. The send path is the plain exported async function **`inviteTeamMember` in `src/hooks/useAdminData.ts:2267`**, called from `src/components/redesign/cleaners/OperatorCleaners.tsx:365`. It currently discards the response status and the 409 body. The D/E ledger already recorded this; it was missed when the plan was written.
 
-Change the mutation's error path so a 409 carrying `error === 'seat_cap_reached'` is **not** toasted, and is instead exposed to the caller so the page can open `SeatCapDialog`. Every other error keeps its current toast behaviour. Read the actual 409 body shape from `src/app/api/admin/send-invite/route.ts` before writing this; do not assume field names.
+`POST /api/admin/send-invite` returns 409 with a seat-cap body when the org is at its cap (PR D, placed after request validation). Today the caller surfaces `result.error` straight into a toast, so an operator would read the raw string `seat_cap_reached`.
+
+Change `inviteTeamMember` to return the status and the parsed body rather than collapsing them, then have `OperatorCleaners.tsx` open `SeatCapDialog` on a 409 with `error === 'seat_cap_reached'` instead of toasting. Every other error keeps its current toast. Read the actual 409 body from `src/app/api/admin/send-invite/route.ts` before writing this; do not assume field names.
 
 - [ ] **Step 2: Add the seat indicator**
 
@@ -2041,6 +2073,8 @@ During a trial, show the 15-seat trial cap **only when it is reached** (spec §1
 - [ ] **Step 3: Implement `SeatCapDialog`**
 
 Two cases, decided by whether a seat can be added within the current tier.
+
+**Case 0, the org is on a trial** (`plan_tier` is null, cap is the flat 15). There is no tier to add a seat to and nothing to charge. Title: `You have used all 15 trial seats`. Body: `Your trial includes 15 cleaner seats and all 15 are in use. Choose a plan to add more.` Buttons: `Not now` and `Choose a plan`, the latter opening the paywall. **Check this case FIRST**: both cases below dereference `PLANS[tier]`, which throws when `tier` is null.
 
 **Case A, room in the tier** (`seat_count < PLANS[tier].maxSeats`), owner only:
 
@@ -2073,7 +2107,7 @@ Run: `npx tsc --noEmit && npm run lint && npx vitest run src/components/redesign
 
 ```bash
 git add src/components/redesign/billing/SeatCapDialog.tsx \
-        src/components/redesign/cleaners/OperatorCleaners.tsx src/hooks/useInvites.ts
+        src/components/redesign/cleaners/OperatorCleaners.tsx src/hooks/useAdminData.ts
 git commit -m "feat(billing): resolve the seat cap inline in the invite flow"
 ```
 
@@ -2085,7 +2119,9 @@ After hosted Checkout, Stripe returns the user to our `success_url` / `cancel_ur
 
 **Files:**
 - Create: `src/components/redesign/billing/CheckoutReturn.tsx`
-- Modify: `src/components/redesign/billing/BillingPaywall.tsx` (mount it)
+- Modify: `src/components/redesign/settings/sections/BillingSection.tsx` (mount it)
+
+⚠ **Revised 2026-09-22.** The earlier draft mounted this inside `BillingPaywall`, where it would never render for the most common case. Checkout returns to `${appUrl}/admin/settings?section=billing&checkout=success` (`src/lib/payments/orgBilling.ts:270-271`), i.e. **Settings > Billing**, and a trialing buyer who purchased before expiry is not frozen, so no paywall is mounted to host it.
 
 - [ ] **Step 1: Implement**
 
@@ -2121,16 +2157,26 @@ Spec §12. Two halves: buttons that should open the wall instead of a form, and 
 - Modify: the Services editor, Add customer, and Invite entry points
 - Modify: `src/components/redesign/billing/billing-api.ts` (shared 402 handling)
 
+⚠ **Revised 2026-09-22.** Two corrections before you start.
+
+**The paywall opener cannot be a hook.** `usePaywall()` is a React hook, and Task 12's 402 net lives in `billing-api.ts`'s `call`, a plain async function with no React context. Change `usePaywall` (Task 7) to wrap a **module-level store** rather than a bare context: a module that holds the open/closed boolean, exposes `openPaywall()` / `closePaywall()` as plain functions, and a `usePaywall()` hook built on `useSyncExternalStore`. `call` then imports `openPaywall` directly. A window `CustomEvent` also works; pick one and use it in both places.
+
+**There is already a shared fetch helper, at `src/lib/auth/apiFetch.ts`** (not `src/lib/apiFetch.ts`, which does not exist; the review misreported the path and it was checked). Read it before adding the 402 handling, and prefer extending it over duplicating its error semantics in `billing-api.ts`.
+
 - [ ] **Step 1: Gate the four entry points**
 
 For each of New booking (`OperatorTopBar.tsx:80`), the Services editor, Add customer, and Invite: when `uiEnabled && access?.frozen`, the click calls `usePaywall().open()` instead of opening the form.
 
 The button stays **visible and rendered disabled-looking**, not removed. A button that vanishes teaches nothing; a disabled one with a bar above it explaining why teaches the whole story. For a non-owner the click is a no-op (there is no wall to open for them) and the neutral bar from Task 8 carries the explanation.
 
-Locate the other three entry points with:
+**Gate New booking at the host, not at the buttons.** There are eight separate triggers that all open the same sheet by setting `?newbooking=1`, hosted by `src/components/redesign/bookings/new-booking/OperatorBookingHost.tsx` (it reads `useDetailParam('newbooking')`). Gate inside that host: when `uiEnabled && access?.frozen`, it opens the paywall instead of the sheet and clears the param. One place, and no trigger can be missed.
+
+Note also that the menu item is labelled **"New customer"**, not "Add customer". Locate the remaining entry points with:
 ```bash
-grep -rn "New booking\|Add customer\|Invite cleaner\|Invite team" src/components/redesign --include=*.tsx
+grep -rn "newbooking\|New customer\|Invite" src/components/redesign --include=*.tsx | head -30
 ```
+
+The buttons themselves stay visible and rendered in a disabled style, but must remain clickable so the click can open the wall. Use `aria-disabled` plus the muted styling rather than the `disabled` attribute, which would swallow the click and leave the user with a dead control and no explanation.
 
 - [ ] **Step 2: Add the 402 net**
 
@@ -2153,8 +2199,31 @@ git commit -am "feat(billing): route frozen new-work clicks and stale 402s to th
 The innocent third party. **Ruling R18**: never 404, never mention billing, always give a route around the block.
 
 **Files:**
-- Modify: `src/components/redesign/homeowner/booking/useSubmitBookingRequest.ts`
+- Create: a migration via `npx supabase migration new add_org_contact_phone` (NEVER hand-number)
+- Modify: `src/types/index.ts` (`Organization` interface)
+- Modify: the organization profile settings section and `updateOrgProfile`
+- Modify: `src/components/redesign/homeowner/booking/BookingFlow.tsx` (the 402 surfaces at `:104-113` today, as a toast)
 - Modify: the Add a home submit path
+
+⚠ **Revised 2026-09-22.** Ruling R18 says the blocked homeowner gets the company's phone so they can book offline. **`organizations` has no phone column.** The `phone` at `src/types/index.ts:77` belongs to `UserProfile`, which is a named individual's personal number, and surfacing that to their customers without asking is not something to ship by default. Bridger approved adding a real column.
+
+- [ ] **Step 0: Add the column and a way to fill it**
+
+```bash
+npx supabase migration new add_org_contact_phone
+```
+
+```sql
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS contact_phone text;
+
+COMMENT ON COLUMN public.organizations.contact_phone IS
+  'Public contact number shown to homeowners when online booking is unavailable. Optional.';
+```
+
+Idempotent, as every migration here must be. Then add `contact_phone` to the `Organization` interface, to the org profile settings form (it sits naturally beside the existing org fields, saved through `updateOrgProfile`), and label it so the owner understands where it appears: `Public phone number`, helper text `Shown to your customers if online booking is ever unavailable. Leave blank to hide it.`
+
+Run `npx supabase db reset` afterwards to confirm the schema rebuilds cleanly.
 
 - [ ] **Step 1: Implement**
 
@@ -2189,6 +2258,20 @@ git commit -am "feat(billing): give blocked homeowners a way around the block"
 
 **Files:**
 - Create: `tests/e2e/billing-paywall.spec.ts`
+
+⚠ **Revised 2026-09-22.** As drafted this suite could never pass in CI. Playwright runs against the Vercel preview, where `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED` is unset, so every surface in this plan renders `null` and every assertion fails. The suite also has a single shared login (`tests/e2e/settings.spec.ts:3-17`) and no billing seeding helper.
+
+Two things are therefore required, and the second is an ops action:
+
+1. **The spec guards itself.** At the top:
+   ```ts
+   const billingUiOn = process.env.NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED === 'true'
+   test.skip(!billingUiOn, 'billing UI is flag-dark in this environment')
+   ```
+   So it passes locally with the flag set, and skips rather than fails elsewhere.
+2. **Add `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` to the Vercel PREVIEW environment only.** Not production. Previews are not customer-facing, every pre-existing org is comped by the §5.3 migration, and the server flag stays off, so nothing is actually enforced; only the UI becomes visible so it can be tested. Without this the suite is a no-op and the Asana regression it exists to catch ships unguarded. **Record this in the ops checklist and flag it to Bridger; do not set it yourself.**
+
+A guarded suite that always skips is worse than no suite, because it reads as coverage. If the ops step is refused, say so in the PR description rather than leaving a silently-skipping spec behind.
 
 - [ ] **Step 1: Write the spec**
 
@@ -2303,6 +2386,7 @@ Named so no implementer wanders into them:
 - **Engagement-gating the trial extension.** The evidence says it is not a conversion lever, but gating it is a behaviour change with its own design. Possible later refinement, not this PR.
 - **The annual renewal reminder email** (15 to 45 days, required by California's ARL for auto-renewing subscriptions). This is a real compliance obligation with no owner in any current spec. It is an email, not UI. **Raise it as a new backlog item; do not build it here.**
 - **Flipping any flag.** PR F ships dark.
+- **The post-delete "1 seat is now open" message** (spec §9 and §13). Found missing by review on 2026-09-22: it was in neither a task nor this list. It belongs with the Cleaners page work in Task 10; add it there as a toast after a successful cleaner delete, worded `That frees one seat. You now have {n} of {cap} seats in use.` and shown only when `uiEnabled && access.seatCap !== null`.
 
 ## Pre-flag-flip additions to the ops checklist
 
@@ -2326,6 +2410,6 @@ Run before handing this plan to an executor.
 **Type consistency.** `BillingStatePayload` (Task 3) is consumed by name in Tasks 5 and 6. `PlanPreviewPayload` (Task 4) is consumed in Tasks 5, 6 and 10. `PlanSelectionBody` (Task 5) is the body type for Tasks 6, 7 and 10. `StepperProps` (Task 1) is consumed in Task 6. `ShellBannerProps` (Task 2) is consumed in Task 8. `usePaywall` (Task 7) is consumed in Tasks 8 and 12.
 
 **Known soft spots**, flagged rather than hidden:
-- Task 3 and Task 4 tests use fixture helper names (`org.manager`, `org.setBilling`) that may not match `tests/helpers/fixtures.ts` exactly. Each task says to read the fixtures file first and adapt the plumbing while keeping the assertions. An implementer who invents helpers instead of reading will fail.
+- ~~Task 3 and Task 4 tests use fixture helper names that may not match.~~ **Resolved 2026-09-22.** They did not match, and review caught it. Both test suites are now written against the verified API: `withTestOrg(opts?)` returns a fixture, `admin` is seeded as an admin, `callRoute` returns a parsed `body`, auth is `bearerHeader`. The lesson generalises: this plan asserted a dozen things about the codebase without opening the files, and roughly half were wrong, while every claim it made about the Stripe SDK was verified and correct.
 - Task 4's `sumTax` reads `total_taxes`, whose shape varies by Stripe API version. The pinned version is `2025-12-15.clover`. Verify against a real test-mode preview before trusting the tax line in production.
 - Task 7's reassurance counts depend on data already being in cache. The task explicitly permits dropping the counts rather than adding a query.
