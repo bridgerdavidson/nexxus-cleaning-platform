@@ -1976,6 +1976,7 @@ describe('POST /api/stripe/webhook', () => {
   it('customer.subscription.updated mirrors subscription state onto the org', async () => {
     const admin = createTestSupabaseClient();
     const eventId = `evt_sub_upd_${org.organizationId.slice(0, 8)}`;
+    const mirrorPeriodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
     const event = {
       id: eventId,
       object: 'event',
@@ -1988,7 +1989,21 @@ describe('POST /api/stripe/webhook', () => {
           object: 'subscription',
           status: 'active',
           customer: 'cus_unused_here',
-          current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+          // On apiVersion 2025-12-15.clover current_period_end lives on the
+          // ITEM, not the subscription. A fixture that puts it at the top level
+          // is asserting a shape Stripe never sends.
+          items: {
+            object: 'list',
+            data: [
+              {
+                id: 'si_mirror_1',
+                object: 'subscription_item',
+                quantity: 1,
+                current_period_end: mirrorPeriodEnd,
+                price: { id: 'price_base', lookup_key: 'growth_monthly' },
+              },
+            ],
+          },
           metadata: { organization_id: org.organizationId },
         },
       },
@@ -2013,7 +2028,10 @@ describe('POST /api/stripe/webhook', () => {
     const row = o as { subscription_id: string; subscription_status: string; subscription_current_period_end: string | null };
     expect(row.subscription_id).toBe('sub_mirror_1');
     expect(row.subscription_status).toBe('active');
+    // Postgres hands timestamptz back with a +00:00 offset rather than Z, so
+    // compare the instant, not the spelling.
     expect(row.subscription_current_period_end).not.toBeNull();
+    expect(new Date(row.subscription_current_period_end!).getTime()).toBe(mirrorPeriodEnd * 1000);
 
     const { data: ev } = await admin
       .from('tenant_subscription_events')
@@ -2089,12 +2107,16 @@ describe('POST /api/stripe/webhook', () => {
     });
   };
 
+  // The renewal date sits on the subscription ITEM on apiVersion 2025-12-15.clover;
+  // Subscription itself has no current_period_end field at all in stripe@20.1.2.
+  // Every fixture below carries it where Stripe really puts it.
+  const ITEM_PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 86400;
+
   const subscriptionPayload = (over: Record<string, unknown> = {}) => ({
     id: 'sub_mirror_plan',
     object: 'subscription',
     status: 'active',
     customer: 'cus_unused_here',
-    current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
     metadata: { organization_id: org.organizationId },
     items: { object: 'list', data: [] },
     ...over,
@@ -2103,9 +2125,21 @@ describe('POST /api/stripe/webhook', () => {
   const planItems = (baseKey: string, seatKey?: string, seatQty?: number) => ({
     object: 'list',
     data: [
-      { id: 'si_base', object: 'subscription_item', quantity: 1, price: { id: 'price_base', lookup_key: baseKey } },
+      {
+        id: 'si_base',
+        object: 'subscription_item',
+        quantity: 1,
+        current_period_end: ITEM_PERIOD_END,
+        price: { id: 'price_base', lookup_key: baseKey },
+      },
       ...(seatKey
-        ? [{ id: 'si_seat', object: 'subscription_item', quantity: seatQty, price: { id: 'price_seat', lookup_key: seatKey } }]
+        ? [{
+            id: 'si_seat',
+            object: 'subscription_item',
+            quantity: seatQty,
+            current_period_end: ITEM_PERIOD_END,
+            price: { id: 'price_seat', lookup_key: seatKey },
+          }]
         : []),
     ],
   });
@@ -2115,7 +2149,8 @@ describe('POST /api/stripe/webhook', () => {
       .from('organizations')
       .select(
         'subscription_id, subscription_status, plan_tier, billing_period, seat_count, ' +
-          'subscription_cancel_at, billing_paused_at, billing_pause_resumes_at, billing_email',
+          'subscription_cancel_at, billing_paused_at, billing_pause_resumes_at, billing_email, ' +
+          'subscription_current_period_end',
       )
       .eq('id', org.organizationId)
       .single();
@@ -2131,8 +2166,35 @@ describe('POST /api/stripe/webhook', () => {
       billing_paused_at: string | null;
       billing_pause_resumes_at: string | null;
       billing_email: string | null;
+      subscription_current_period_end: string | null;
     };
   };
+
+  // stripe@20.1.2 has NO current_period_end on Subscription; it exists only on
+  // SubscriptionItem. Reading the top level left
+  // organizations.subscription_current_period_end null for every subscriber
+  // while the defensive read hid the fact that nothing was ever found.
+  it('mirrors the renewal date from the subscription item, not the subscription', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ subscription_current_period_end: null })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_cpe_${crypto.randomUUID().slice(0, 8)}`;
+    const res = await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({ items: planItems('growth_monthly') }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await readOrgBilling(admin);
+    expect(row.subscription_current_period_end).not.toBeNull();
+    expect(new Date(row.subscription_current_period_end!).getTime()).toBe(ITEM_PERIOD_END * 1000);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
 
   it('mirrors tier, period, and seats: the seat line carries EXTRAS, not the total', async () => {
     const admin = createTestSupabaseClient();

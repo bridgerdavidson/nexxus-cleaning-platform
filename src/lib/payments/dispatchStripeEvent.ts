@@ -1700,8 +1700,15 @@ async function handleSubscriptionUpsert(
     });
   }
 
-  // current_period_end has moved across Stripe API versions; read it defensively.
-  const cpe = (sub as unknown as { current_period_end?: number }).current_period_end;
+  // current_period_end moved from Subscription to SubscriptionItem. On the pinned
+  // API version (2025-12-15.clover) it exists ONLY on the item, so read the item
+  // first and keep the top-level read as a fallback for older payloads and for
+  // any replayed historical event.
+  const subAny = sub as unknown as {
+    current_period_end?: number;
+    items?: { data?: Array<{ current_period_end?: number }> };
+  };
+  const cpe = subAny.items?.data?.[0]?.current_period_end ?? subAny.current_period_end;
   const pause = sub.pause_collection;
 
   const update: Record<string, unknown> = {
