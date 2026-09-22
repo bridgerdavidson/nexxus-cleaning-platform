@@ -109,7 +109,7 @@ export interface Organization {
   stripe_connect_onboarded_at?: string | null;
   // SaaS billing (the org paying Nexxus) — distinct from the Connect account above.
   stripe_customer_id?: string | null;
-  subscription_status?: 'none' | 'trialing' | 'active' | 'past_due' | 'canceled';
+  subscription_status?: 'none' | 'trialing' | 'active' | 'past_due' | 'unpaid' | 'canceled';
   subscription_id?: string | null;
   subscription_current_period_end?: string | null;
   // Platform fee + per-org policy.

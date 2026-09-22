@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requirePlatformAdmin } from '@/lib/auth/requirePlatformAdmin';
 import { deliverOwnerProvisionEmail } from '@/lib/auth/provisionDelivery';
+import { TRIAL_DAYS } from '@/lib/billing/plans';
 import {
   EMPTY_MEMBER_COUNTS,
   type PlatformOrgMemberCounts,
@@ -116,16 +117,19 @@ export async function POST(request: NextRequest) {
   );
 
   // 1. Create the org, trialing (no card, no enforcement yet).
+  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 86_400_000).toISOString();
+
   const { data: org, error: orgError } = await supabaseAdmin
     .from('organizations')
     .insert({
       name,
       billing_email: billingEmail,
       subscription_status: 'trialing',
+      trial_ends_at: trialEndsAt,
       created_by: auth.userId,
     })
     .select(
-      'id, name, billing_email, subscription_status, stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, created_at',
+      'id, name, billing_email, subscription_status, trial_ends_at, stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, created_at',
     )
     .single();
 

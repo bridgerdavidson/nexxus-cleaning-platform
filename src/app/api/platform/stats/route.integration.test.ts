@@ -20,6 +20,12 @@ const METRIC_KEYS: (keyof PlatformStats)[] = [
   'gmv_cents',
   'total_appointments',
   'new_tenants_30d',
+  'past_due',
+  'unpaid',
+  'trial_expired',
+  'trial_expiring_7d',
+  'comped',
+  'paused',
 ];
 
 async function fetchStats(token: string): Promise<PlatformStats> {

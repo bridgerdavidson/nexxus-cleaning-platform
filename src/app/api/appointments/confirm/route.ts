@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
     //     the body for caller identity. ─────────────────────────────────────
     const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
       allowedRoles: ['cleaner', 'admin', 'owner', 'manager'],
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
     const cleanerId = auth.userId;

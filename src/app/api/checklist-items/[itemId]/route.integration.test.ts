@@ -105,4 +105,23 @@ describe('/api/checklist-items/[itemId]', () => {
     const { data } = await db.from('checklist_line_items').select('id').eq('id', itemId);
     expect(data).toEqual([]);
   });
+
+  describe('billing enforcement', () => {
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    });
+
+    it('PATCH returns 402 billing_frozen when the flag is on and the trial has expired', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await db.from('organizations').update({
+        comped_at: null,
+        subscription_status: 'trialing',
+        trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+      }).eq('id', org.organizationId);
+
+      const res = await patch(itemId, { task: 'x' }, org.admin.accessToken);
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('billing_frozen');
+    });
+  });
 });

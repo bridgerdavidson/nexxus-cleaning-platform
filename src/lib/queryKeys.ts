@@ -146,4 +146,8 @@ export const keys = {
     operator: (orgId: string) => ['onboarding', 'operator', orgId] as const,
     homeowner: (userId: string) => ['onboarding', 'homeowner', userId] as const,
   },
+  billing: {
+    all: ['billing'] as const,
+    org: (orgId: string) => ['billing', 'org', orgId] as const,
+  },
 };

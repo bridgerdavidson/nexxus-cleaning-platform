@@ -12,12 +12,20 @@ import {
   createBillingPortalSession,
 } from '@/lib/stripe/billing';
 
-export type OrgSubscriptionStatus = 'none' | 'trialing' | 'active' | 'past_due' | 'canceled';
+export type { OrgSubscriptionStatus } from '@/lib/billing/access';
+import type { OrgSubscriptionStatus } from '@/lib/billing/access';
 
 /**
- * Collapse any Stripe subscription status into one our `organizations_subscription_status_chk`
- * constraint allows (none | trialing | active | past_due | canceled). Unknown/initial states
- * map to a sensible allowed value so a webhook can never violate the DB constraint.
+ * Collapse any Stripe subscription status into one our
+ * `organizations_subscription_status_chk` constraint allows
+ * (none | trialing | active | past_due | unpaid | canceled). Unknown or initial
+ * states map to a sensible allowed value so a webhook can never violate the
+ * constraint.
+ *
+ * `past_due` and `unpaid` are deliberately NOT merged: past_due means Stripe is
+ * still retrying and only shows a banner, unpaid means retries are exhausted and
+ * the organization freezes. Stripe's own `paused` status is unrelated to this
+ * app's paused state, which is derived from pause_collection, so it stays `none`.
  */
 export function mapSubscriptionStatus(stripeStatus: string | null | undefined): OrgSubscriptionStatus {
   switch (stripeStatus) {
@@ -26,8 +34,9 @@ export function mapSubscriptionStatus(stripeStatus: string | null | undefined): 
     case 'active':
       return 'active';
     case 'past_due':
-    case 'unpaid':
       return 'past_due';
+    case 'unpaid':
+      return 'unpaid';
     case 'canceled':
     case 'incomplete_expired':
       return 'canceled';

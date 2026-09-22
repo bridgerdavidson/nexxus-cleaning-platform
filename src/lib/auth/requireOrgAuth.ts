@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { verifyAccessToken } from './verifyToken';
+import { assertOrgWritable } from '@/lib/billing/guard';
 
 export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 
@@ -24,6 +25,13 @@ export interface RequireOrgAuthOptions {
    * must be in this list. Default: `['owner', 'admin']`.
    */
   allowedRoles?: OrgRole[];
+  /**
+   * When true, a frozen organization gets 402 after the membership and role
+   * checks pass. Ordered last on purpose: an outsider still gets 403, so the
+   * response never leaks whether an org they do not belong to is paying.
+   * No-op while BILLING_ENFORCEMENT_ENABLED is off.
+   */
+  requireWritable?: boolean;
 }
 
 const json = (status: number, body: Record<string, unknown>) =>
@@ -69,6 +77,14 @@ export async function requireOrgAuth(
   const role = membership.role as OrgRole;
   if (!allowedRoles.includes(role)) {
     return { ok: false, response: json(403, { error: 'Insufficient role for this action' }) };
+  }
+
+  // Billing runs LAST, after membership and role. A non-member must still get
+  // 403, never a 402 that would tell an outsider whether someone else's
+  // organization is paying.
+  if (options.requireWritable) {
+    const writable = await assertOrgWritable(supabaseAdmin, organizationId);
+    if (!writable.ok) return { ok: false, response: writable.response };
   }
 
   return { ok: true, userId: verified.userId, email: verified.email, role };

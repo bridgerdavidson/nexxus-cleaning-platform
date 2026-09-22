@@ -96,4 +96,58 @@ describe('POST /api/properties', () => {
     cleanups.push(() => mgr.cleanup());
     expect((await post(fields({ owner_id: org.homeowner.userId }), mgr.accessToken)).status).toBe(201);
   });
+
+  describe('billing enforcement', () => {
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    });
+
+    async function freezeOrg(organizationId: string) {
+      await db
+        .from('organizations')
+        .update({
+          comped_at: null,
+          subscription_status: 'trialing',
+          trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+        })
+        .eq('id', organizationId);
+    }
+
+    it('passes through when the flag is off, even for a frozen org', async () => {
+      await freezeOrg(org.organizationId);
+
+      const res = await post(fields(), org.homeowner.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('returns 402 to a homeowner adding a home while the org is frozen', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await freezeOrg(org.organizationId);
+
+      const res = await post(fields(), org.homeowner.accessToken);
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('billing_frozen');
+    });
+
+    it('allows a comped org with the flag on', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await db
+        .from('organizations')
+        .update({ comped_at: new Date().toISOString() })
+        .eq('id', org.organizationId);
+
+      const res = await post(fields(), org.homeowner.accessToken);
+      expect(res.status).toBe(201);
+    });
+
+    it('still returns 403 to a non-member before it considers billing', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      const outsider = await withTestOrg();
+      cleanups.push(() => outsider.cleanup());
+      await freezeOrg(org.organizationId);
+
+      const res = await post(fields(), outsider.homeowner.accessToken);
+      expect(res.status).toBe(403);
+    });
+  });
 });

@@ -3,6 +3,11 @@ import { supabaseAdmin } from '../../../../lib/supabase-admin';
 import { verifyAccessToken } from '../../../../lib/auth/verifyToken';
 import { coerceManagerPermissions } from '@/lib/permissions/managerFlags';
 import { deliverInviteEmail } from '@/lib/auth/inviteDelivery';
+import { ORG_BILLING_COLUMNS, deriveBillingAccess, type OrgBillingRow } from '@/lib/billing/access';
+import { billingEnforcementEnabled } from '@/lib/billing/flags';
+import { assertOrgWritable } from '@/lib/billing/guard';
+import type { PlanTier } from '@/lib/billing/plans';
+import { countSeatsInUse, nextTierFor, seatCapDecision } from '@/lib/billing/seats';
 
 export async function POST(request: NextRequest) {
   try {
@@ -211,6 +216,71 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 }
         );
+      }
+    }
+
+    // ── Billing: frozen org first, then the purchased-seat cap ─────────────
+    // Placed as late as possible while still being ahead of every mutation: the
+    // whole request has been validated by here (400s and the 403 role ceiling
+    // have already answered), and nothing has been created, emailed, or deleted
+    // yet. Validation must come first or flipping BILLING_ENFORCEMENT_ENABLED
+    // would silently turn a malformed request's 400 into a 402 or 409, a
+    // behavior change that would appear only in production at the flag flip.
+    //
+    // Order inside: a frozen org gets 402 rather than a confusing 409 about
+    // seats it cannot buy until it unfreezes.
+    const writable = await assertOrgWritable(supabaseAdmin, organizationId);
+    if (!writable.ok) return writable.response;
+
+    // Purchased seats: only cleaners consume one, and only pending invites
+    // reserve one. The flag gates the whole block so the off path costs no
+    // extra queries at all.
+    if (billingEnforcementEnabled() && role === 'cleaner') {
+      const { data: billingRow } = await supabaseAdmin
+        .from('organizations')
+        .select(ORG_BILLING_COLUMNS)
+        .eq('id', organizationId)
+        .maybeSingle();
+
+      // No row means a bad org id; let the route's own handling answer, exactly
+      // like assertOrgWritable failing open.
+      if (billingRow) {
+        const access = deriveBillingAccess(billingRow as unknown as OrgBillingRow, new Date());
+
+        // Exclude this invite's own address: a resend supersedes the pending row
+        // and promotes a new one, so it consumes no additional seat and must not
+        // be refused at full occupancy.
+        //
+        // Fail open if the count cannot be taken, matching assertOrgWritable and
+        // the billingRow fetch above. The spec already accepts an over-cap race
+        // at cap-minus-one, so admitting one extra seat during a database
+        // incident is the same trade, while blocking a paying customer's invite
+        // is a visible outage. Seats are billed as purchased, not used, so
+        // revenue is unaffected and the next invite is capped normally.
+        let seatsInUse: number | null = null;
+        try {
+          seatsInUse = await countSeatsInUse(supabaseAdmin, organizationId, normalizedEmail);
+        } catch (seatCountError) {
+          console.error(
+            'send-invite: seat count failed, allowing the invite',
+            (seatCountError as Error).message,
+          );
+        }
+
+        // A comped org has a null cap, which means unlimited, never zero.
+        if (seatsInUse !== null && !seatCapDecision({ seatCap: access.seatCap, seatsInUse }).allowed) {
+          const currentTier = ((billingRow as unknown as OrgBillingRow).plan_tier as PlanTier | null) ?? null;
+          return NextResponse.json(
+            {
+              error: 'seat_cap_reached',
+              cap: access.seatCap,
+              in_use: seatsInUse,
+              tier: currentTier,
+              next_tier: nextTierFor(seatsInUse, currentTier),
+            },
+            { status: 409 },
+          );
+        }
       }
     }
 
