@@ -300,7 +300,24 @@ subscriptions.update(subId, {
 })
 ```
 
-Immediate, prorated, both directions. Monthly↔annual is a normal call (both items swap interval together). Mirrors `plan_tier`, `billing_period`, `seat_count` on success; the webhook is the backstop.
+Prorated in both directions, with the **invoicing** split by direction. Corrected 2026-09-22:
+the original claim ("immediate, prorated, both directions") was false in code. Stripe's
+`create_prorations` writes proration lines but does NOT invoice them, so an upgrade's extra
+money waited for the next scheduled invoice, which on an annual plan is up to a year away
+(a Growth annual customer going 8 to 15 seats in month two received roughly $840 of seats
+before any charge).
+
+| Change | `proration_behavior` | Billed |
+|---|---|---|
+| Raises the per-cycle charge (tier up, seats up, monthly→annual) | `always_invoice` + `payment_behavior: 'error_if_incomplete'` | Now. A declined card rejects the change rather than leaving the customer upgraded and unpaid |
+| Lowers it (tier down, seats down, annual→monthly) | `create_prorations` | Credit on the next invoice. We never refund cash for a downgrade |
+| Leaves it unchanged (a seat shuffle at one price) | `create_prorations` | Nothing |
+
+Direction is one comparison of `planChargeCents` before against after, which reproduces the
+whole table. A stored plan the code cannot read is treated as an upgrade, failing toward
+charging rather than toward giving service away. Refused entirely while `past_due` or
+`unpaid` (§7.1). Monthly↔annual is a normal call (both items swap interval together). Mirrors
+`plan_tier`, `billing_period`, `seat_count` on success; the webhook is the backstop.
 
 For `past_due` / `unpaid`, a plan change does not fix the failed payment; the UI leads with "Update payment method" (portal) and offers Change plan second.
 
