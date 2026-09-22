@@ -395,8 +395,17 @@ The saving does not justify that: $13 to $46 per customer per year at our prices
 $4 NSF fee that erases three months of it and a $15 dispute that erases thirteen months plus
 the revenue.
 
+**The rule generalises past ACH.** Any payment method whose result arrives asynchronously
+breaks the same assumption, and the SDK's union carries several that a non-US billing address
+can surface: `sepa_debit`, `bacs_debit`, `acss_debit`, `au_becs_debit`. Exclude any such
+method until the payment dimension above exists. Two further ACH-specific facts found in
+review: it is **not supported in the Stripe Customer Portal**, so a bank-paying customer could
+not manage their own subscription, and **partial refunds are unavailable** for it, which would
+block any pro-rata refund.
+
 **Therefore:** `createBillingCheckoutSession` passes
-`excluded_payment_method_types: ['us_bank_account']`. This is the Stripe-sanctioned way to
+`excluded_payment_method_types: ['us_bank_account']` (PR F task 15; not in the code at the
+time this section was written). This is the Stripe-sanctioned way to
 narrow methods (`payment_method_types` remains forbidden), it is greppable, and it survives a
 Dashboard change. Verified present in the pinned SDK at
 `node_modules/stripe/types/Checkout/SessionsResource.d.ts:124`.
@@ -419,9 +428,12 @@ Dashboard change. Verified present in the pinned SDK at
    just subscription status.
 7. Turn on Direct Debit retries (2 tries / 40 days / NSF only) and re-tune dunning; a 14-day
    card schedule is wrong for a 40-day ACH cycle.
-8. Switch plan-change upgrades to `always_invoice` plus **pending updates**. Today
-   `create_prorations` charges immediately, so a failed ACH would flip the org to `past_due`
-   four days after we told them the upgrade worked.
+8. Add **pending updates** to plan-change upgrades. As of 2026-09-22 upgrades already use
+   `always_invoice` + `payment_behavior: 'error_if_incomplete'` (§10.4), which is correct for
+   cards but not sufficient for ACH: `error_if_incomplete` cannot detect a failure that
+   arrives four business days later, so the org would flip out of `active` well after we told
+   them the upgrade worked. (This item previously described `create_prorations` as charging
+   immediately. It does not, which was the bug §10.4 fixes.)
 9. Keep hosted Checkout (it collects and stores the Nacha mandate, emails confirmation, and
    auto-answers proof-of-authorization inquiries) and do not disable Stripe's customer
    emails, or we inherit the mandate and microdeposit email duty ourselves.
