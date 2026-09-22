@@ -57,12 +57,15 @@ Settled during the design session. Implementers must not re-litigate these; they
 | R12 | Trial extension stays, but **secondary in the hierarchy**, never a primary CTA | A 337,724-person RCT found 14-day and 30-day trials statistically indistinguishable, so the extension is not a conversion lever. It is a good-faith service affordance |
 | R13 | Severity ladder is **three steps**, mapped to existing Badge tones: neutral pill (days 14-4), caution banner (3-1), critical (0 / frozen / past_due) | Avoids a binary jump. Uses tokens that already exist |
 | R14 | Pill is dismissible per session. The <=3-day banner, frozen bar and past_due banner are **not dismissible** | NN/g: a message about an unresolved problem should not vanish on a click |
-| R15 | Pill and banners are **owner + admin only**; cleaners are on a different shell and never see them | GitLab shipped a trial banner to all users and their own team called it "a little aggressive depending on who is trialing" |
+| R15 | **Corrected 2026-09-22.** The trial PILL and every pay CTA are owner + admin only. The frozen bar's EXPLANATION renders for managers too, with no actions (that is R2). Cleaners are on a different shell and see nothing | GitLab shipped a trial banner to all users and their own team called it "a little aggressive depending on who is trialing". But a manager who cannot create a booking still has to learn why, or we reproduce the Asana dead-control failure. Explanation is not nagging |
 | R16 | At the seat cap, resolve **inline in the invite dialog**, owner only. Never redirect to Billing | Jobber (our direct competitor) and Calendly both do this. Non-owners get "ask your account owner" |
 | R17 | The seat dialog shows the **new monthly total**, not just the delta | Silent or vague seat charges are what generated public complaints against ClickUp and Loom |
 | R18 | The homeowner block message gives a **route around the block** (the company's own phone), never mentions billing, and never 404s | No vendor does this well. Shopify makes the storefront vanish; GoDaddy's parked page looks hacked |
 | R19 | The billing query opts into `refetchOnWindowFocus: true` **locally**. Do not change the global default | Global is `false` (`src/lib/queryClient.ts:7`) by design. Without the local opt-in, a past_due banner stays on screen after the user has already paid in the Stripe tab |
 | R20 | Wallets on, **ACH explicitly excluded** in the Checkout Session | ACH is supported for subscriptions and we pass no `payment_method_types`, so a Dashboard toggle would enable it in production with zero code change. An ACH subscription stays `active` after a failed debit, which would unfreeze an org we could not re-freeze. Spec §10.8 |
+| R21 | Money copy splits by direction. An **upgrade** says "Charged today"; a **downgrade** says "Credited to your next invoice on {date}"; a same-price change says neither | PR E was corrected on 2026-09-22 so upgrades use `always_invoice` and downgrades stay `create_prorations` (spec §10.4). One blanket "Due today" is now wrong half the time |
+| R22 | The `unpaid` branch is **defensive only**. Build it, do not design for it | Spec §7.1: dunning now ends by cancelling, so a lapsed customer lands in `canceled` and buys again through Checkout. `unpaid` should never occur; if it does, the Dashboard config has drifted |
+| R23 | The preview endpoint MUST reuse PR E's direction logic and its shared `readCurrentItems`, never its own copy | Two copies of "is this an upgrade" that can drift is exactly how the preview comes to quote a different number than the change applies |
 
 ---
 
@@ -137,10 +140,61 @@ No quantity control exists anywhere in the repo (`grep -rn "stepper\|Stepper" sr
   export function Stepper(props: StepperProps): JSX.Element
   ```
 
+> **Revised 2026-09-22.** The original version of this task tested the rendered component with
+> `@testing-library/react`. That package is **not installed** (check `package.json`), and the
+> unit project runs in `environment: 'node'` (`vitest.config.mts`), so the test could not run at
+> all. Rather than add a UI testing stack to this PR, the clamping logic moves into a pure
+> exported function and THAT is what gets tested. The component becomes a thin renderer over it.
+> This is the same split used in Task 6 (`planPickerModel.ts`), so it matches a pattern the plan
+> already establishes.
+
+**Additional export from this task:**
+
+```ts
+/** Pure. Returns the value the stepper should move to, or null when the move is refused. */
+export function nextStepperValue(
+  current: number, delta: 1 | -1, min: number, max: number | null,
+): number | null
+```
+
 - [ ] **Step 1: Write the failing test**
 
+```ts
+// src/components/ui/stepper.test.ts   (.ts, NOT .tsx: no rendering)
+import { describe, it, expect } from 'vitest'
+import { nextStepperValue } from './stepper'
+
+describe('nextStepperValue', () => {
+  it('refuses to go below min', () => {
+    expect(nextStepperValue(6, -1, 6, 15)).toBeNull()
+  })
+  it('refuses to go above max', () => {
+    expect(nextStepperValue(15, 1, 6, 15)).toBeNull()
+  })
+  it('treats a null max as unbounded', () => {
+    expect(nextStepperValue(99, 1, 1, null)).toBe(100)
+  })
+  it('steps within bounds', () => {
+    expect(nextStepperValue(8, 1, 6, 15)).toBe(9)
+    expect(nextStepperValue(8, -1, 6, 15)).toBe(7)
+  })
+  it('refuses any move when min equals max', () => {
+    expect(nextStepperValue(5, 1, 5, 5)).toBeNull()
+    expect(nextStepperValue(5, -1, 5, 5)).toBeNull()
+  })
+})
+```
+
+The component's own accessibility contract (`role="spinbutton"`, `aria-valuenow`, arrow keys,
+`minReason`) is still REQUIRED by the implementation below. It is verified by the Task 14 E2E
+spec and by manual check, not by a unit test, because this repo has no component-rendering
+setup and PR F is not the place to add one.
+
+<details>
+<summary>Superseded: the original rendering test, kept so nobody re-adds it by mistake</summary>
+
 ```tsx
-// src/components/ui/stepper.test.tsx
+// DO NOT USE. @testing-library/react is not installed and the unit project is node-environment.
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { Stepper } from './stepper'
@@ -194,9 +248,13 @@ describe('Stepper', () => {
 })
 ```
 
+```
+
+</details>
+
 - [ ] **Step 2: Run the test and verify it fails**
 
-Run: `npx vitest run src/components/ui/stepper.test.tsx`
+Run: `npx vitest run src/components/ui/stepper.test.ts`
 Expected: FAIL, "Failed to resolve import ./stepper"
 
 - [ ] **Step 3: Implement**
@@ -279,13 +337,13 @@ Notes for the implementer:
 
 - [ ] **Step 4: Run the test and verify it passes**
 
-Run: `npx vitest run src/components/ui/stepper.test.tsx`
-Expected: PASS, 6 tests
+Run: `npx vitest run src/components/ui/stepper.test.ts`
+Expected: PASS, 5 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/ui/stepper.tsx src/components/ui/stepper.test.tsx
+git add src/components/ui/stepper.tsx src/components/ui/stepper.test.ts
 git commit -m "feat(ui): add Stepper primitive for quantity controls"
 ```
 
@@ -474,101 +532,144 @@ It returns the RAW row and lets the client call `deriveBillingAccess` itself. Th
 
 ```ts
 // src/app/api/billing/state/route.integration.test.ts
-import { describe, it, expect } from 'vitest'
-import { GET } from './route'
-import { callRoute } from '@/../tests/helpers/auth'
-import { withTestOrg } from '@/../tests/helpers/fixtures'
+import { describe, expect, it } from 'vitest';
+import { GET } from './route';
+import { withTestOrg } from '@/../tests/helpers/fixtures';
+import { bearerHeader, callRoute } from '@/../tests/helpers/auth';
+import { createTestSupabaseClient } from '@/../tests/helpers/supabase';
+
+const supabase = createTestSupabaseClient();
+
+/**
+ * withTestOrg()'s `admin` handle is seeded as org role 'admin', not 'owner'.
+ * Same helper as src/app/api/billing/trial/extend/route.integration.test.ts.
+ */
+async function setRole(organizationId: string, userId: string, role: string) {
+  const { error } = await supabase
+    .from('organization_members')
+    .update({ role })
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId);
+  if (error) throw new Error(`set role failed: ${error.message}`);
+}
+
+function get(token: string, organizationId?: string) {
+  const qs = organizationId ? `?organization_id=${organizationId}` : '';
+  return callRoute(GET, {
+    method: 'GET',
+    url: `http://localhost/api/billing/state${qs}`,
+    headers: bearerHeader(token),
+  });
+}
 
 describe('GET /api/billing/state', () => {
-  it('returns the raw billing row and seats in use for an owner', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(GET, {
-        method: 'GET',
-        url: `http://localhost/api/billing/state?organization_id=${org.id}`,
-        actor: org.owner,
-      })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.success).toBe(true)
-      // withTestOrg stamps a live 14-day trial (PR D changed the fixture default)
-      expect(body.data.billing.subscription_status).toBe('trialing')
-      expect(body.data.billing.trial_ends_at).toEqual(expect.any(String))
-      expect(body.data.role).toBe('owner')
-      expect(typeof body.data.seats_in_use).toBe('number')
-      // Present even on a trial, where it is null. Task 9's "Renews on" line
-      // reads this; it is NOT inside ORG_BILLING_COLUMNS.
-      expect(body.data).toHaveProperty('current_period_end')
-    })
-  })
+  it('returns the raw billing row, seats in use and the caller role', async () => {
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      const res = await get(org.admin.accessToken, org.organizationId);
 
-  it('returns every column deriveBillingAccess needs', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(GET, {
-        method: 'GET',
-        url: `http://localhost/api/billing/state?organization_id=${org.id}`,
-        actor: org.owner,
-      })
-      const { data } = await res.json()
+      expect(res.status).toBe(200);
+      const body = res.body as { success: boolean; data: Record<string, unknown> };
+      expect(body.success).toBe(true);
+      // withTestOrg stamps a live 14-day trial (PR D changed the fixture default).
+      const billing = body.data.billing as Record<string, unknown>;
+      expect(billing.subscription_status).toBe('trialing');
+      expect(billing.trial_ends_at).toEqual(expect.any(String));
+      expect(body.data.role).toBe('owner');
+      expect(typeof body.data.seats_in_use).toBe('number');
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('returns every column deriveBillingAccess needs, plus the renewal date', async () => {
+    const org = await withTestOrg();
+    try {
+      const res = await get(org.admin.accessToken, org.organizationId);
+      const data = (res.body as { data: Record<string, unknown> }).data;
+      const billing = data.billing as Record<string, unknown>;
+
       for (const col of [
         'subscription_status', 'trial_ends_at', 'trial_extended_at', 'comped_at',
         'plan_tier', 'billing_period', 'seat_count', 'subscription_cancel_at',
         'billing_paused_at', 'billing_pause_resumes_at',
       ]) {
-        expect(data.billing).toHaveProperty(col)
+        expect(billing).toHaveProperty(col);
       }
-    })
-  })
+      // Sits OUTSIDE `billing` on purpose: not in ORG_BILLING_COLUMNS, because
+      // deriveBillingAccess never reads it. Task 9 renders it as "Renews on".
+      expect(data).toHaveProperty('current_period_end');
+    } finally {
+      await org.cleanup();
+    }
+  });
 
-  it('allows a manager and reports their role', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(GET, {
-        method: 'GET',
-        url: `http://localhost/api/billing/state?organization_id=${org.id}`,
-        actor: org.manager,
-      })
-      expect(res.status).toBe(200)
-      expect((await res.json()).data.role).toBe('manager')
-    })
-  })
+  it('allows an admin and reports their role', async () => {
+    const org = await withTestOrg();
+    try {
+      const res = await get(org.admin.accessToken, org.organizationId);
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { role: string } }).data.role).toBe('admin');
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('allows a manager, because a frozen manager must learn why work is blocked', async () => {
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'manager');
+      const res = await get(org.admin.accessToken, org.organizationId);
+      expect(res.status).toBe(200);
+      expect((res.body as { data: { role: string } }).data.role).toBe('manager');
+    } finally {
+      await org.cleanup();
+    }
+  });
 
   it('rejects a cleaner', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(GET, {
-        method: 'GET',
-        url: `http://localhost/api/billing/state?organization_id=${org.id}`,
-        actor: org.cleaner,
-      })
-      expect(res.status).toBe(403)
-    })
-  })
+    const org = await withTestOrg();
+    try {
+      const res = await get(org.cleaner.accessToken, org.organizationId);
+      expect(res.status).toBe(403);
+    } finally {
+      await org.cleanup();
+    }
+  });
 
   it('rejects a member of another org', async () => {
-    await withTestOrg(async (orgA) => {
-      await withTestOrg(async (orgB) => {
-        const res = await callRoute(GET, {
-          method: 'GET',
-          url: `http://localhost/api/billing/state?organization_id=${orgA.id}`,
-          actor: orgB.owner,
-        })
-        expect(res.status).toBe(403)
-      })
-    })
-  })
+    const orgA = await withTestOrg();
+    const orgB = await withTestOrg();
+    try {
+      const res = await get(orgB.admin.accessToken, orgA.organizationId);
+      expect(res.status).toBe(403);
+    } finally {
+      await orgB.cleanup();
+      await orgA.cleanup();
+    }
+  });
 
   it('400s without organization_id', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(GET, {
-        method: 'GET',
-        url: 'http://localhost/api/billing/state',
-        actor: org.owner,
-      })
-      expect(res.status).toBe(400)
-    })
-  })
-})
+    const org = await withTestOrg();
+    try {
+      const res = await get(org.admin.accessToken);
+      expect(res.status).toBe(400);
+    } finally {
+      await org.cleanup();
+    }
+  });
+});
+
 ```
 
-Implementer note: read `tests/helpers/fixtures.ts` before writing this. PR D changed `withTestOrg` so every fixture org starts on a live 14-day trial, and added `tenant_subscription_events` cleanup. Match the actor helper names the existing PR D route tests use (e.g. `src/app/api/billing/trial/extend/route.integration.test.ts`) rather than inventing new ones; if `org.manager` or `org.cleaner` is not what the fixture exposes, use whatever it does expose and keep the same role coverage.
+**Revised 2026-09-22.** The first version of this test used a `withTestOrg(callback)` API that does not exist. The real shapes, verified in the helpers:
+
+- `withTestOrg(opts?)` **returns** `TestOrgFixture` (`tests/helpers/fixtures.ts:118`); it is not callback-style. Always `await org.cleanup()` in a `finally`.
+- `TestOrgFixture` exposes `organizationId`, `admin`, `cleaner`, `homeowner`. **There is no `owner` handle**: `admin` is seeded with org role `'admin'`, so promote it when you need an owner, exactly as `trial/extend/route.integration.test.ts` does.
+- `callRoute(handler, { method, url?, body?, headers? })` returns `{ status, body, raw }` with **`body` already parsed**. Never call `res.json()`.
+- Auth is `bearerHeader(token)` from `tests/helpers/auth.ts`, not an `actor:` field.
+- `withTestOrg({ billing: { ... } })` overrides the billing columns; PR D added it, and every fixture org otherwise starts on a live 14-day trial.
 
 - [ ] **Step 2: Run the test and verify it fails**
 
@@ -702,29 +803,30 @@ Append to `src/lib/stripe/billing.ts`, next to `retrieveSubscription` and `updat
 /**
  * Preview what a subscription change costs WITHOUT applying it. Read-only.
  *
- * Mirrors the item diff that updateSubscriptionItems would send, so the number
- * the customer sees is the number they are charged. automatic_tax is passed on
- * exactly the same condition as the real Checkout Session, otherwise the
- * preview and the charge disagree (spec ruling R8).
+ * Mirrors the item diff updateSubscriptionItems would send, so the number the
+ * customer sees is the number they are charged. automatic_tax is passed on
+ * exactly the same condition as the real Checkout Session, otherwise the preview
+ * and the charge disagree (ruling R8).
+ *
+ * `customer` is deliberately NOT passed: InvoiceCreatePreviewParams marks it
+ * optional, and `subscription` already identifies the customer. An earlier draft
+ * of this plan read it off readLiveSubscription, which does not return it.
  */
 export async function previewSubscriptionChange(input: {
-  customerId: string
-  subscriptionId: string
-  items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[]
+  subscriptionId: string;
+  items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[];
 }): Promise<Stripe.Invoice> {
-  const stripe = getStripe()
   const params: Stripe.InvoiceCreatePreviewParams = {
-    customer: input.customerId,
     subscription: input.subscriptionId,
     subscription_details: {
       items: input.items,
       proration_behavior: 'create_prorations',
     },
-  }
+  };
   if (billingTaxEnabled()) {
-    params.automatic_tax = { enabled: true }
+    params.automatic_tax = { enabled: true };
   }
-  return stripe.invoices.createPreview(params)
+  return getStripe().invoices.createPreview(params);
 }
 ```
 
@@ -736,148 +838,228 @@ The Stripe layer is mocked, as in every other PR E route test. Copy the `vi.mock
 
 ```ts
 // src/app/api/billing/plan/preview/route.integration.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const previewSubscriptionChange = vi.fn()
-const retrieveSubscription = vi.fn()
-const resolvePrices = vi.fn()
+// Mock surface copied from src/app/api/billing/plan/route.integration.test.ts.
+// resolvePrices returns Record<LookupKey, string>, i.e. plain price ids, and the
+// seat keys are extra_seat_monthly / extra_seat_annual.
+const previewSubscriptionChange = vi.fn();
+const retrieveSubscription = vi.fn();
 
 vi.mock('@/lib/stripe/billing', () => ({
   previewSubscriptionChange: (...a: unknown[]) => previewSubscriptionChange(...a),
   retrieveSubscription: (...a: unknown[]) => retrieveSubscription(...a),
-  resolvePrices: (...a: unknown[]) => resolvePrices(...a),
-}))
+  resolvePrices: vi.fn(async () => ({
+    starter_monthly: 'p_sm', starter_annual: 'p_sa',
+    growth_monthly: 'p_gm', growth_annual: 'p_ga',
+    pro_monthly: 'p_pm', pro_annual: 'p_pa',
+    extra_seat_monthly: 'p_esm', extra_seat_annual: 'p_esa',
+  })),
+}));
 
-import { POST } from './route'
-import { callRoute } from '@/../tests/helpers/auth'
-import { withTestOrg } from '@/../tests/helpers/fixtures'
+import { POST } from './route';
+import { withTestOrg } from '@/../tests/helpers/fixtures';
+import { bearerHeader, callRoute } from '@/../tests/helpers/auth';
+import { createTestSupabaseClient } from '@/../tests/helpers/supabase';
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  resolvePrices.mockResolvedValue({
-    growth_monthly: { id: 'price_growth_m' },
-    growth_annual: { id: 'price_growth_a' },
-    seat_monthly: { id: 'price_seat_m' },
-    seat_annual: { id: 'price_seat_a' },
-  })
-})
+const supabase = createTestSupabaseClient();
+
+async function setRole(organizationId: string, userId: string, role: string) {
+  const { error } = await supabase
+    .from('organization_members').update({ role })
+    .eq('organization_id', organizationId).eq('user_id', userId);
+  if (error) throw new Error(`set role failed: ${error.message}`);
+}
+
+async function readBilling(organizationId: string) {
+  const { data } = await supabase
+    .from('organizations')
+    .select('plan_tier, billing_period, seat_count')
+    .eq('id', organizationId).single();
+  return data as { plan_tier: string | null; billing_period: string | null; seat_count: number | null };
+}
+
+function preview(token: string, organizationId: string, body: Record<string, unknown>) {
+  return callRoute(POST, {
+    method: 'POST',
+    headers: bearerHeader(token),
+    body: { organization_id: organizationId, ...body },
+  });
+}
+
+/** A live Growth-monthly subscription on 8 seats. */
+const LIVE_BILLING = {
+  subscription_status: 'active',
+  subscription_id: 'sub_live',
+  stripe_customer_id: 'cus_1',
+  plan_tier: 'growth',
+  billing_period: 'monthly',
+  seat_count: 8,
+};
+
+beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllEnvs());
 
 describe('POST /api/billing/plan/preview', () => {
-  it('returns the tax-inclusive amount due now for a live subscription', async () => {
-    await withTestOrg(async (org) => {
-      await org.setBilling({
-        subscription_status: 'active',
-        subscription_id: 'sub_live',
-        stripe_customer_id: 'cus_1',
-        plan_tier: 'starter',
-        billing_period: 'monthly',
-        seat_count: 3,
-      })
+  it('returns the tax-inclusive amount due now for an upgrade', async () => {
+    vi.stubEnv('BILLING_TAX_ENABLED', 'true');
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
       retrieveSubscription.mockResolvedValue({
         id: 'sub_live',
-        items: { data: [{ id: 'si_base', price: { lookup_key: 'starter_monthly' }, quantity: 1 }] },
-      })
+        items: { data: [{ id: 'si_base', quantity: 1, price: { lookup_key: 'growth_monthly' } }] },
+      });
       previewSubscriptionChange.mockResolvedValue({
-        amount_due: 10717,
-        total: 10717,
+        amount_due: 10717, total: 10717,
         total_taxes: [{ amount: 817 }],
         next_payment_attempt: 1792000000,
-      })
+      });
 
-      const res = await callRoute(POST, {
-        method: 'POST',
-        url: 'http://localhost/api/billing/plan/preview',
-        actor: org.owner,
-        body: { organization_id: org.id, tier: 'growth', period: 'monthly', seat_count: 8 },
-      })
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'pro', period: 'monthly', seat_count: 15 });
 
-      expect(res.status).toBe(200)
-      const { data } = await res.json()
-      expect(data.due_now_cents).toBe(10717)
-      expect(data.tax_cents).toBe(817)
-      expect(data.tax_excluded).toBe(false)
-      expect(data.is_new_subscription).toBe(false)
-    })
-  })
+      expect(res.status).toBe(200);
+      const { data } = res.body as { data: Record<string, unknown> };
+      expect(data.due_now_cents).toBe(10717);
+      expect(data.tax_cents).toBe(817);
+      expect(data.tax_excluded).toBe(false);
+      expect(data.is_new_subscription).toBe(false);
+      expect(data.direction).toBe('upgrade');
+    } finally {
+      await org.cleanup();
+    }
+  });
 
-  it('never calls updateSubscriptionItems', async () => {
-    // The whole point: a preview must not mutate. The module mock above does not
-    // even export it, so importing the route would throw if it tried to use it.
-    await withTestOrg(async (org) => {
-      await org.setBilling({
-        subscription_status: 'active', subscription_id: 'sub_live',
-        stripe_customer_id: 'cus_1', plan_tier: 'starter',
-        billing_period: 'monthly', seat_count: 3,
-      })
+  it('reports a downgrade as credited to the next invoice, not charged today', async () => {
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
       retrieveSubscription.mockResolvedValue({
         id: 'sub_live',
-        items: { data: [{ id: 'si_base', price: { lookup_key: 'starter_monthly' }, quantity: 1 }] },
-      })
-      previewSubscriptionChange.mockResolvedValue({ amount_due: 6000, total: 6000, total_taxes: [] })
+        items: { data: [{ id: 'si_base', quantity: 1, price: { lookup_key: 'growth_monthly' } }] },
+      });
+      previewSubscriptionChange.mockResolvedValue({ amount_due: 0, total: 0, total_taxes: [] });
 
-      await callRoute(POST, {
-        method: 'POST', url: 'http://localhost/api/billing/plan/preview', actor: org.owner,
-        body: { organization_id: org.id, tier: 'growth', period: 'monthly', seat_count: 8 },
-      })
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'starter', period: 'monthly', seat_count: 3 });
 
-      // The org row must be untouched by a preview.
-      const after = await org.readBilling()
-      expect(after.plan_tier).toBe('starter')
-      expect(after.seat_count).toBe(3)
-    })
-  })
+      const { data } = res.body as { data: Record<string, unknown> };
+      expect(data.direction).toBe('downgrade');
+      // Ruling R21: a downgrade is never worded as a charge.
+      expect(data.due_now_cents).toBe(0);
+    } finally {
+      await org.cleanup();
+    }
+  });
 
-  it('reports a first purchase without calling Stripe preview', async () => {
-    await withTestOrg(async (org) => {
-      // Fixture default is a live trial with no subscription_id.
-      const res = await callRoute(POST, {
-        method: 'POST', url: 'http://localhost/api/billing/plan/preview', actor: org.owner,
-        body: { organization_id: org.id, tier: 'growth', period: 'monthly', seat_count: 8 },
-      })
-      expect(res.status).toBe(200)
-      const { data } = await res.json()
-      expect(data.is_new_subscription).toBe(true)
-      // A first purchase is priced from the catalogue, not from a proration.
-      expect(data.due_now_cents).toBe(9900)
-      expect(previewSubscriptionChange).not.toHaveBeenCalled()
-    })
-  })
+  it('never mutates the org row', async () => {
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      retrieveSubscription.mockResolvedValue({
+        id: 'sub_live',
+        items: { data: [{ id: 'si_base', quantity: 1, price: { lookup_key: 'growth_monthly' } }] },
+      });
+      previewSubscriptionChange.mockResolvedValue({ amount_due: 6000, total: 6000, total_taxes: [] });
 
-  it('marks tax as excluded when the tax flag is off', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(POST, {
-        method: 'POST', url: 'http://localhost/api/billing/plan/preview', actor: org.owner,
-        body: { organization_id: org.id, tier: 'growth', period: 'monthly', seat_count: 8 },
-      })
-      const { data } = await res.json()
-      expect(data.tax_excluded).toBe(true)
-      expect(data.tax_cents).toBe(0)
-    })
-  })
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'pro', period: 'monthly', seat_count: 15 });
+      expect(res.status).toBe(200);
+
+      const after = await readBilling(org.organizationId);
+      expect(after.plan_tier).toBe('growth');
+      expect(after.seat_count).toBe(8);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('prices a first purchase from the catalogue without calling Stripe', async () => {
+    // Fixture default: live trial, no subscription_id.
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'growth', period: 'monthly', seat_count: 8 });
+
+      expect(res.status).toBe(200);
+      const { data } = res.body as { data: Record<string, unknown> };
+      expect(data.is_new_subscription).toBe(true);
+      expect(data.due_now_cents).toBe(9900);
+      expect(previewSubscriptionChange).not.toHaveBeenCalled();
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('marks tax excluded when the tax flag is off', async () => {
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'growth', period: 'monthly', seat_count: 8 });
+      const { data } = res.body as { data: Record<string, unknown> };
+      expect(data.tax_excluded).toBe(true);
+      expect(data.tax_cents).toBe(0);
+    } finally {
+      await org.cleanup();
+    }
+  });
 
   it('rejects a seat count below the tier floor', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(POST, {
-        method: 'POST', url: 'http://localhost/api/billing/plan/preview', actor: org.owner,
-        body: { organization_id: org.id, tier: 'starter', period: 'monthly', seat_count: 99 },
-      })
-      expect(res.status).toBe(400)
-    })
-  })
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      // Growth includes 8; 2 is below the floor. (The earlier draft sent 99,
+      // which is ABOVE Growth's max of 15 and tested a different rule.)
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'growth', period: 'monthly', seat_count: 2 });
+      expect(res.status).toBe(400);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('rejects a seat count above the tier maximum', async () => {
+    const org = await withTestOrg();
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'starter', period: 'monthly', seat_count: 99 });
+      expect(res.status).toBe(400);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  it('refuses while past_due, matching POST /api/billing/plan', async () => {
+    const org = await withTestOrg({ billing: { ...LIVE_BILLING, subscription_status: 'past_due' } });
+    try {
+      await setRole(org.organizationId, org.admin.userId, 'owner');
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'pro', period: 'monthly', seat_count: 15 });
+      expect(res.status).toBe(409);
+    } finally {
+      await org.cleanup();
+    }
+  });
 
   it('rejects a non-owner', async () => {
-    await withTestOrg(async (org) => {
-      const res = await callRoute(POST, {
-        method: 'POST', url: 'http://localhost/api/billing/plan/preview', actor: org.admin,
-        body: { organization_id: org.id, tier: 'growth', period: 'monthly', seat_count: 8 },
-      })
-      expect(res.status).toBe(403)
-    })
-  })
-})
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      const res = await preview(org.admin.accessToken, org.organizationId,
+        { tier: 'pro', period: 'monthly', seat_count: 15 });
+      expect(res.status).toBe(403);
+    } finally {
+      await org.cleanup();
+    }
+  });
+});
+
 ```
 
-Implementer note: `org.setBilling` / `org.readBilling` are illustrative. Use whatever `tests/helpers/fixtures.ts` actually exposes for stamping and reading billing columns (PR D added a `billing` override to `withTestOrg`). Keep the assertions identical; adapt only the plumbing.
+**Revised 2026-09-22.** Use the same real fixture API described in Task 3: `withTestOrg({ billing: {...} })` returns a fixture, `admin` is an admin until promoted, `callRoute` returns a parsed `body`, and auth goes through `bearerHeader`. Read `src/app/api/billing/plan/route.integration.test.ts` for the Stripe-mocked variant of this shape, which is the closest sibling to what you are writing.
 
 - [ ] **Step 3: Run the test and verify it fails**
 
@@ -888,123 +1070,163 @@ Expected: FAIL, cannot resolve `./route`
 
 ```ts
 // src/app/api/billing/plan/preview/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import type Stripe from 'stripe'
-import { supabaseAdmin } from '@/lib/supabase-admin'
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth'
-import { parsePlanSelection, seatBoundsError } from '@/lib/billing/planSelection'
-import { readLiveSubscription } from '@/lib/payments/orgBilling'
-import { previewSubscriptionChange, retrieveSubscription, resolvePrices } from '@/lib/stripe/billing'
-import { diffSubscriptionItems } from '@/lib/billing/diffSubscriptionItems'
-import { planChargeCents } from '@/lib/billing/plans'
-import { billingTaxEnabled } from '@/lib/billing/flags'
+import { NextRequest, NextResponse } from 'next/server';
+import type Stripe from 'stripe';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { parsePlanSelection, seatBoundsError } from '@/lib/billing/planSelection';
+import { readLiveSubscription } from '@/lib/payments/orgBilling';
+import { previewSubscriptionChange, retrieveSubscription, resolvePrices } from '@/lib/stripe/billing';
+import { diffSubscriptionItems } from '@/lib/billing/diffSubscriptionItems';
+import { readCurrentItems } from '@/lib/billing/readCurrentItems';
+import { shouldInvoiceNow } from '@/lib/billing/planDirection';
+import { planChargeCents } from '@/lib/billing/plans';
+import { billingTaxEnabled } from '@/lib/billing/flags';
 
-export const runtime = 'nodejs'
+export const runtime = 'nodejs';
 
 export interface PlanPreviewPayload {
-  due_now_cents: number
-  recurring_cents: number
-  next_charge_at: string | null
-  tax_cents: number
-  tax_excluded: boolean
-  is_new_subscription: boolean
+  /** Charged now, in cents, tax included when the tax flag is on. 0 for a downgrade. */
+  due_now_cents: number;
+  /** Recurring amount per period after this change. */
+  recurring_cents: number;
+  /** ISO date of the next invoice, or null when Stripe did not supply one. */
+  next_charge_at: string | null;
+  tax_cents: number;
+  /** True when the tax flag is off, so the UI says tax is calculated at checkout. */
+  tax_excluded: boolean;
+  is_new_subscription: boolean;
+  /** Drives the copy (ruling R21). An upgrade is charged now; a downgrade is credited. */
+  direction: 'upgrade' | 'downgrade' | 'unchanged';
 }
 
 /**
  * Price a plan change WITHOUT applying it, so the confirm step can state the
- * exact amount due (spec ruling R7/R8, and ROSCA's pre-charge disclosure).
+ * exact amount (rulings R7, R8, R21, and ROSCA pre-charge disclosure).
  *
- * READ ONLY. This route must never write to Stripe or to the organizations
- * table. It is a POST only because it carries a selection body.
+ * READ ONLY. Never writes to Stripe or to organizations. POST only because it
+ * carries a selection body.
  *
- * Owner only, matching POST /api/billing/plan: an admin may start a
- * subscription but may not change an existing one, so only an owner can be
- * shown the arithmetic of a change.
+ * Owner only, and refused while past_due or unpaid, both matching
+ * POST /api/billing/plan exactly. If the two ever disagree, the preview quotes a
+ * change the apply call would reject.
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
-    const organizationId = body?.organization_id
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const organizationId = body?.organization_id;
     if (typeof organizationId !== 'string' || !organizationId) {
-      return NextResponse.json({ error: 'organization_id is required' }, { status: 400 })
+      return NextResponse.json({ error: 'organization_id is required' }, { status: 400 });
     }
 
-    const parsed = parsePlanSelection(body)
-    if (!parsed.ok) {
-      return NextResponse.json({ error: parsed.error }, { status: 400 })
-    }
+    const parsed = parsePlanSelection(body);
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
     const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
       allowedRoles: ['owner'],
-    })
-    if (!auth.ok) return auth.response
+    });
+    if (!auth.ok) return auth.response;
 
-    const { tier, period, seatCount } = parsed.selection
+    const { tier, period, seatCount } = parsed.selection;
+    const boundsError = seatBoundsError(tier, seatCount);
+    if (boundsError) return NextResponse.json({ error: boundsError }, { status: 400 });
 
-    const boundsError = seatBoundsError(tier, seatCount)
-    if (boundsError) {
-      return NextResponse.json({ error: boundsError }, { status: 400 })
+    // Same columns and same refusal as POST /api/billing/plan.
+    const { data: org } = await supabaseAdmin
+      .from('organizations')
+      .select('plan_tier, billing_period, seat_count, subscription_status')
+      .eq('id', organizationId)
+      .single();
+
+    const status = org?.subscription_status as string | undefined;
+    if (status === 'past_due' || status === 'unpaid') {
+      return NextResponse.json(
+        {
+          error: 'billing_payment_required',
+          message: 'Please update your payment method before changing your plan.',
+          state: status,
+        },
+        { status: 409 },
+      );
     }
 
-    const taxOn = billingTaxEnabled()
-    const live = await readLiveSubscription(supabaseAdmin, organizationId)
+    const stored = {
+      planTier: org?.plan_tier ?? null,
+      billingPeriod: org?.billing_period ?? null,
+      seatCount: org?.seat_count ?? null,
+    };
+    const target = { tier, period, seatCount };
+    const invoiceNow = shouldInvoiceNow(stored, target);
+    const direction: PlanPreviewPayload['direction'] = directionOf(stored, target);
 
-    // First purchase: there is nothing to prorate. Price it from the catalogue.
-    // Stripe will compute real tax on the hosted Checkout page.
+    const taxOn = billingTaxEnabled();
+    const live = await readLiveSubscription(supabaseAdmin, organizationId);
+
+    // First purchase: nothing to prorate. Price from the catalogue; Stripe computes
+    // real tax on the hosted Checkout page.
     if (!live.hasLiveSub) {
-      const charge = planChargeCents(tier, period, seatCount)
-      const payload: PlanPreviewPayload = {
-        due_now_cents: charge,
-        recurring_cents: charge,
-        next_charge_at: null,
-        tax_cents: 0,
-        tax_excluded: true,
-        is_new_subscription: true,
-      }
-      return NextResponse.json({ success: true, data: payload })
+      const charge = planChargeCents(tier, period, seatCount);
+      return NextResponse.json({
+        success: true,
+        data: {
+          due_now_cents: charge,
+          recurring_cents: charge,
+          next_charge_at: null,
+          tax_cents: 0,
+          tax_excluded: true,
+          is_new_subscription: true,
+          direction: 'upgrade',
+        } satisfies PlanPreviewPayload,
+      });
     }
 
-    const sub = await retrieveSubscription(live.subscriptionId!)
-    const prices = await resolvePrices()
-    const current = readCurrentItemsForPreview(sub)
-    const items = diffSubscriptionItems(current, { tier, period, seatCount }, prices)
+    const sub = await retrieveSubscription(live.subscriptionId!);
+    const prices = await resolvePrices();
+    const current = readCurrentItems(sub);
+    const items = diffSubscriptionItems(current, target, prices);
 
     const invoice = await previewSubscriptionChange({
-      customerId: live.customerId!,
       subscriptionId: live.subscriptionId!,
       items: items as unknown as Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[],
-    })
+    });
 
-    const taxCents = sumTax(invoice)
-    const payload: PlanPreviewPayload = {
-      due_now_cents: invoice.amount_due ?? 0,
-      recurring_cents: planChargeCents(tier, period, seatCount) + (taxOn ? taxCents : 0),
-      next_charge_at: invoice.next_payment_attempt
-        ? new Date(invoice.next_payment_attempt * 1000).toISOString()
-        : null,
-      tax_cents: taxOn ? taxCents : 0,
-      tax_excluded: !taxOn,
-      is_new_subscription: false,
-    }
+    const taxCents = taxOn ? sumTax(invoice) : 0;
 
-    return NextResponse.json({ success: true, data: payload })
+    return NextResponse.json({
+      success: true,
+      data: {
+        // A downgrade is never billed now, whatever the preview invoice says:
+        // updateSubscriptionItems leaves it as credit (spec 10.4).
+        due_now_cents: invoiceNow ? (invoice.amount_due ?? 0) : 0,
+        recurring_cents: planChargeCents(tier, period, seatCount) + taxCents,
+        next_charge_at: invoice.next_payment_attempt
+          ? new Date(invoice.next_payment_attempt * 1000).toISOString()
+          : null,
+        tax_cents: taxCents,
+        tax_excluded: !taxOn,
+        is_new_subscription: false,
+        direction,
+      } satisfies PlanPreviewPayload,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not price this change'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Could not price this change';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 /** Total tax across whatever shape the pinned API version returns. */
 function sumTax(invoice: Stripe.Invoice): number {
-  const taxes = (invoice as unknown as { total_taxes?: { amount: number }[] }).total_taxes
-  if (Array.isArray(taxes)) {
-    return taxes.reduce((sum, t) => sum + (t.amount ?? 0), 0)
-  }
-  return 0
+  const taxes = (invoice as unknown as { total_taxes?: { amount: number }[] }).total_taxes;
+  return Array.isArray(taxes) ? taxes.reduce((sum, t) => sum + (t.amount ?? 0), 0) : 0;
 }
 ```
 
-Implementer note on `readCurrentItemsForPreview`: `POST /api/billing/plan/route.ts` already has a private `readCurrentItems(sub)` that extracts `{ baseItemId, basePriceLookupKey, seatItemId, seatQuantity }` and throws when the subscription has no recognised base line. **Do not copy it.** Export it from `src/lib/billing/diffSubscriptionItems.ts` (or a sibling module) and import it in BOTH routes, so the preview and the real change can never diverge in how they read a subscription. Update `plan/route.ts` to use the shared export in the same commit, and keep its existing behaviour and error message exactly.
+**Revised 2026-09-22, after the PR E fix pass landed.** Two prerequisites now exist or must be created:
+
+- **`readCurrentItems` is already shared.** PR E's fix pass extracted it to `src/lib/billing/readCurrentItems.ts` and both `plan/route.ts` and the webhook classifier now use it, so a Price whose lookup key was transferred away still classifies. Import it; do NOT write a second copy, and do NOT reintroduce the `readCurrentItemsForPreview` name the earlier draft invented.
+- **`shouldInvoiceNow` must be extracted.** PR E's fix put it inside `src/app/api/billing/plan/route.ts` as a private function. Move it to `src/lib/billing/planDirection.ts`, export it alongside a new `directionOf(stored, target): 'upgrade' | 'downgrade' | 'unchanged'` built from the same `planChargeCents` comparison, and import both in `plan/route.ts` and in this route. Keep `plan/route.ts`'s behaviour byte-identical; this is a move, not a rewrite. Ruling **R23**: two copies of "is this an upgrade" that can drift is exactly how the preview comes to quote a number the apply call does not honour.
+
+`directionOf` returns `'upgrade'` whenever `shouldInvoiceNow` is true, `'unchanged'` when the per-cycle charge is identical, and `'downgrade'` otherwise. It exists separately because the UI needs three words where the Stripe call needs one boolean.
 
 - [ ] **Step 5: Run the test and verify it passes**
 
