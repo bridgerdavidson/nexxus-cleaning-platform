@@ -7,6 +7,7 @@ const sessionsCreate = vi.fn();
 const subscriptionsUpdate = vi.fn();
 const subscriptionsRetrieve = vi.fn();
 const subscriptionsCancel = vi.fn();
+const invoicesCreatePreview = vi.fn();
 
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({
@@ -16,6 +17,7 @@ vi.mock('@/lib/stripe', () => ({
       sessions: { create: portalSessionsCreate },
     },
     checkout: { sessions: { create: sessionsCreate } },
+    invoices: { createPreview: invoicesCreatePreview },
     subscriptions: {
       update: subscriptionsUpdate,
       retrieve: subscriptionsRetrieve,
@@ -31,6 +33,7 @@ import {
   createBillingCheckoutSession,
   createBillingPortalSession,
   pauseSubscription,
+  previewSubscriptionChange,
   resolvePortalConfiguration,
   resolvePrices,
   resumeSubscription,
@@ -316,5 +319,93 @@ describe('cancel payloads', () => {
     await cancelStripeSubscription('sub_1');
     expect(subscriptionsCancel).toHaveBeenCalledWith('sub_1');
     expect(subscriptionsUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preview. The route mocks this module, so these are the only tests that see
+// the parameters, and each one is a decision the customer feels: a missing
+// automatic_tax quotes a total the Stripe page then exceeds, and a missing
+// proration_date lets the same request price differently twice in a row.
+// ---------------------------------------------------------------------------
+
+describe('previewSubscriptionChange payload', () => {
+  const items = [{ id: 'si_base', price: 'p_gm' }];
+
+  beforeEach(() => {
+    invoicesCreatePreview.mockReset();
+    invoicesCreatePreview.mockResolvedValue({ id: 'in_preview', amount_due: 3780 });
+  });
+
+  const params = () => invoicesCreatePreview.mock.calls[0][0] as Record<string, unknown>;
+  const subDetails = () =>
+    params().subscription_details as Record<string, unknown>;
+
+  it('previews the subscription with the diffed items and a pinned proration date', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1_700_000_000,
+      automaticTax: false,
+    });
+    expect(params().subscription).toBe('sub_1');
+    expect(subDetails().items).toEqual(items);
+    expect(subDetails().proration_date).toBe(1_700_000_000);
+  });
+
+  // always_invoice would not isolate the immediate charge anyway: the preview
+  // returns the UPCOMING invoice either way, and the route splits its lines.
+  it('always prorates with create_prorations', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: false,
+    });
+    expect(subDetails().proration_behavior).toBe('create_prorations');
+  });
+
+  it('asks for tax only when the caller says the flag is on', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect(params().automatic_tax).toEqual({ enabled: true });
+  });
+
+  it('omits automatic_tax entirely when the flag is off, rather than sending false', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: false,
+    });
+    expect('automatic_tax' in params()).toBe(false);
+  });
+
+  // subscription already identifies the customer; readLiveSubscription has no
+  // customer id to give, and passing a wrong one would price someone else.
+  it('never passes a customer', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect('customer' in params()).toBe(false);
+  });
+
+  it('creates no invoice and updates no subscription', async () => {
+    subscriptionsUpdate.mockReset();
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect(subscriptionsUpdate).not.toHaveBeenCalled();
+    expect(invoicesCreatePreview).toHaveBeenCalledTimes(1);
   });
 });

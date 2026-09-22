@@ -305,3 +305,59 @@ export async function cancelSubscriptionAtPeriodEnd(
 ): Promise<Stripe.Subscription> {
   return getStripe().subscriptions.update(subscriptionId, { cancel_at_period_end: true });
 }
+
+/**
+ * Price a subscription change WITHOUT applying it. Read only: createPreview
+ * writes nothing to Stripe.
+ *
+ * Mirrors the item diff updateSubscriptionItems would send, so the number the
+ * customer sees is the number they are charged. `automaticTax` is passed by the
+ * caller on exactly the same condition as the real Checkout Session (the flag
+ * lives in the route, same as BillingCheckoutInput), otherwise the preview and
+ * the charge disagree (ruling R8).
+ *
+ * `customer` is deliberately NOT passed: InvoiceCreatePreviewParams marks it
+ * optional, and `subscription` already identifies the customer. An earlier draft
+ * of the plan read it off readLiveSubscription, which does not return it.
+ *
+ * `proration_behavior` is ALWAYS `create_prorations` here, even for an upgrade
+ * that will really be applied with `always_invoice`. The preview endpoint does
+ * not return the invoice a given behaviour would cut; it returns the UPCOMING
+ * invoice, which carries the proration lines AND the next period's recurring
+ * lines together (see the sample response in Stripe's prorations guide, where
+ * amount_due 3627 is -166 credit + 541 proration + 3252 next period). So
+ * `invoice.amount_due` is NOT what an upgrade is charged today. The caller has
+ * to split the lines: prorations are the amount due now, everything else is the
+ * recurring amount. See src/app/api/billing/plan/preview/route.ts.
+ */
+export async function previewSubscriptionChange(input: {
+  subscriptionId: string;
+  items: Stripe.InvoiceCreatePreviewParams.SubscriptionDetails.Item[];
+  /**
+   * Unix seconds. Pins the proration to a known instant instead of "whenever
+   * Stripe evaluated this", which is what lets the caller tell the lines billed
+   * at the change from the lines that belong to the next invoice. Stripe prorates
+   * to the second, so without it the same request can price slightly differently
+   * twice in a row.
+   */
+  prorationDate: number;
+  automaticTax: boolean;
+}): Promise<Stripe.Invoice> {
+  const params: Stripe.InvoiceCreatePreviewParams = {
+    subscription: input.subscriptionId,
+    subscription_details: {
+      items: input.items,
+      proration_behavior: 'create_prorations',
+      proration_date: input.prorationDate,
+    },
+  };
+
+  // Passed only behind the flag, same as Checkout: without an active Stripe Tax
+  // registration Stripe silently calculates nothing and returns no error, which
+  // would quote a tax-free total against a taxed charge.
+  if (input.automaticTax) {
+    params.automatic_tax = { enabled: true };
+  }
+
+  return getStripe().invoices.createPreview(params);
+}
