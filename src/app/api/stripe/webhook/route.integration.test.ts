@@ -2441,6 +2441,61 @@ describe('POST /api/stripe/webhook', () => {
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
+  // A reprice with transfer_lookup_key moves the key off the Price existing
+  // subscribers are billed on. Keying the mirror on lookup_key alone silently
+  // stopped mirroring tier, period, and seats for exactly those customers.
+  it('mirrors a plan line whose lookup key was transferred away', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({ plan_tier: null, billing_period: null, seat_count: null })
+      .eq('id', org.organizationId);
+
+    const eventId = `evt_sub_transferred_${crypto.randomUUID().slice(0, 8)}`;
+    const res = await postWebhook(
+      eventId,
+      'customer.subscription.updated',
+      subscriptionPayload({
+        items: {
+          object: 'list',
+          data: [
+            {
+              id: 'si_base',
+              object: 'subscription_item',
+              quantity: 1,
+              current_period_end: ITEM_PERIOD_END,
+              price: {
+                id: 'price_old_base',
+                lookup_key: null,
+                metadata: { nexxus_lookup_key: 'pro_annual' },
+              },
+            },
+            {
+              id: 'si_seat',
+              object: 'subscription_item',
+              quantity: 3,
+              current_period_end: ITEM_PERIOD_END,
+              price: {
+                id: 'price_old_seat',
+                lookup_key: null,
+                metadata: { nexxus_lookup_key: 'extra_seat_annual' },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await readOrgBilling(admin);
+    expect(row.plan_tier).toBe('pro');
+    expect(row.billing_period).toBe('annual');
+    // Pro includes 15; the seat line's 3 are on top.
+    expect(row.seat_count).toBe(18);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   it('an unrecognized base lookup key leaves the plan columns alone rather than nulling them', async () => {
     const admin = createTestSupabaseClient();
     await admin

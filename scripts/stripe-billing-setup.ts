@@ -23,10 +23,26 @@
  * only what is missing, and never deletes, archives, or edits anything that is
  * already there. Running it twice reports thirteen objects found and creates none.
  *
- * TO CHANGE A PRICE LATER: do not edit the Price (Stripe Prices are immutable) and
- * do not archive it. Create the NEW Price with `transfer_lookup_key: true`, which
- * moves the lookup key onto it and leaves every existing subscriber on the Price
- * they bought. That is what keeps the pricing doc's 60 day notice promise cheap.
+ * TO CHANGE A PRICE LATER: Stripe Prices are immutable, so a new amount means a
+ * NEW Price. Two rules, and the second is the one that bites:
+ *
+ *   1. Do NOT archive or deactivate the old Price. Every existing subscriber is
+ *      still billed on it, which is what keeps the pricing doc's 60 day notice
+ *      promise cheap: nobody is repriced without being told.
+ *   2. Create the new Price with `transfer_lookup_key: true` AND with
+ *      `metadata.nexxus_lookup_key` set to the same key, exactly as ensurePrice()
+ *      below does. A lookup key belongs to one active Price at a time, so the
+ *      transfer is the only way the new Price can answer to `growth_monthly` and
+ *      have resolvePrices() find it. The transfer STRIPS the key from the old
+ *      Price, and the app identifies a subscription's plan line from
+ *      `price.lookup_key` first but falls back to `price.metadata.nexxus_lookup_key`
+ *      (src/lib/billing/readCurrentItems.ts), which a transfer cannot move. Skip
+ *      the metadata and those subscribers become unclassifiable: they can never
+ *      change tier or seats again, and the webhook silently stops mirroring what
+ *      they bought.
+ *
+ * Every Price this script creates already carries that metadata. A Price added by
+ * hand in the Dashboard does not, so add it there too.
  *
  * This script holds its own Stripe SDK calls rather than routing them through
  * src/lib/stripe/billing.ts. That rule exists so app code can be mocked in
@@ -152,7 +168,8 @@ async function ensurePrice(
       warnings.push(
         `Price ${existing.id} (${lookupKey}) charges ${money(existing.unit_amount ?? 0)} but ` +
           `src/lib/billing/plans.ts says ${money(unitAmount)}. Nothing was changed. To reprice, ` +
-          'create a new Price with transfer_lookup_key: true (see the header of this script).',
+          'create a new Price carrying BOTH transfer_lookup_key: true and ' +
+          `metadata.nexxus_lookup_key = '${lookupKey}' (see the header of this script).`,
       );
     }
     if (existing.tax_behavior !== 'exclusive') {
@@ -344,8 +361,11 @@ async function main(): Promise<void> {
   }
 
   console.log('');
-  console.log('  To change a price later: create a NEW Price with transfer_lookup_key: true.');
-  console.log('  The key moves to it and existing subscribers stay on the Price they bought.');
+  console.log('  To change a price later: create a NEW Price carrying BOTH');
+  console.log("  transfer_lookup_key: true AND metadata.nexxus_lookup_key = the same key.");
+  console.log('  Leave the old Price ACTIVE: existing subscribers stay on the one they');
+  console.log('  bought, and the metadata is what keeps them classifiable after the');
+  console.log('  transfer strips their lookup key. Never archive a Price with subscribers.');
   console.log('');
 }
 

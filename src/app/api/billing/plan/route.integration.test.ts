@@ -100,14 +100,25 @@ async function withLiveSubscription(
   if (error) throw new Error(`live subscription setup failed: ${error.message}`);
 }
 
-/** What Stripe hands back on retrieve: lookup keys ride along on the items. */
-function stubSubscription(items: Array<{ id: string; lookup: string; quantity?: number }>) {
+/**
+ * What Stripe hands back on retrieve: lookup keys ride along on the items.
+ *
+ * `lookup: null` with `metadata` is the shape a Price is left in after someone
+ * reprices with transfer_lookup_key, which MOVES the key onto the new Price and
+ * leaves every existing subscriber billing on one that no longer has it.
+ */
+function stubSubscription(
+  items: Array<{ id: string; lookup: string | null; quantity?: number; metadataKey?: string }>,
+) {
   retrieveMock.mockResolvedValue({
     id: 'sub_test_live',
     items: {
       data: items.map((i) => ({
         id: i.id,
-        price: { lookup_key: i.lookup },
+        price: {
+          lookup_key: i.lookup,
+          ...(i.metadataKey ? { metadata: { nexxus_lookup_key: i.metadataKey } } : {}),
+        },
         quantity: i.quantity ?? 1,
       })),
     },
@@ -568,6 +579,43 @@ describe('POST /api/billing/plan', () => {
         await org.cleanup();
       }
     });
+  });
+
+  // scripts/stripe-billing-setup.ts used to tell operators to reprice with
+  // transfer_lookup_key: true, which moves the key OFF the Price every existing
+  // subscriber is billed on. Classifying by lookup key alone then locked those
+  // customers out of ever changing tier or seats again.
+  it('still recognises a plan line whose lookup key was transferred away', async () => {
+    const org = await withTestOrg();
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      await withLiveSubscription(org.organizationId, 'active', {
+        tier: 'growth',
+        period: 'monthly',
+        seats: 8,
+      });
+      stubSubscription([
+        { id: 'si_base', lookup: null, metadataKey: 'growth_monthly' },
+        { id: 'si_seat', lookup: null, metadataKey: 'extra_seat_monthly', quantity: 2 },
+      ]);
+      updateMock.mockClear();
+
+      const res = await changePlan(org.admin.accessToken, {
+        organization_id: org.organizationId,
+        tier: 'growth',
+        period: 'monthly',
+        seat_count: 12,
+      });
+
+      expect(res.status).toBe(200);
+      // The seat line was found too, so it is UPDATED rather than duplicated.
+      expect(updateMock.mock.calls[0][1]).toEqual([
+        { id: 'si_base', price: 'p_gm' },
+        { id: 'si_seat', price: 'p_esm', quantity: 4 },
+      ]);
+    } finally {
+      await org.cleanup();
+    }
   });
 
   it('refuses a subscription with no plan line it recognizes', async () => {

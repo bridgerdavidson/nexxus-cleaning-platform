@@ -11,7 +11,6 @@
 // Schedules entirely.
 
 import { NextRequest, NextResponse } from 'next/server';
-import type Stripe from 'stripe';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import {
@@ -25,54 +24,17 @@ import {
   readLiveSubscription,
 } from '@/lib/payments/orgBilling';
 import { countSeatsInUse } from '@/lib/billing/seats';
-import {
-  diffSubscriptionItems,
-  type CurrentSubscriptionItems,
-} from '@/lib/billing/diffSubscriptionItems';
+import { diffSubscriptionItems } from '@/lib/billing/diffSubscriptionItems';
+import { readCurrentItems } from '@/lib/billing/readCurrentItems';
 import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
 import {
   PLAN_TIERS,
   planChargeCents,
-  seatLookupKeyFor,
-  tierFor,
   type BillingPeriod,
   type PlanTier,
 } from '@/lib/billing/plans';
 
 export const runtime = 'nodejs';
-
-const SEAT_LOOKUP_KEYS: string[] = [seatLookupKeyFor('monthly'), seatLookupKeyFor('annual')];
-
-/**
- * Classify the subscription's items into the base plan line and the extra-seat
- * line. `items.data[].price.lookup_key` rides along on a plain retrieve, so no
- * extra fetch is needed.
- */
-function readCurrentItems(sub: Stripe.Subscription): CurrentSubscriptionItems {
-  let baseItemId: string | null = null;
-  let basePriceLookupKey = '';
-  let seatItemId: string | null = null;
-  let seatQuantity = 0;
-
-  for (const item of sub.items?.data ?? []) {
-    const lookupKey = item.price?.lookup_key ?? '';
-    if (tierFor(lookupKey)) {
-      baseItemId = item.id;
-      basePriceLookupKey = lookupKey;
-    } else if (SEAT_LOOKUP_KEYS.includes(lookupKey)) {
-      seatItemId = item.id;
-      seatQuantity = item.quantity ?? 0;
-    }
-  }
-
-  // No base line means this subscription was not created by this system, so
-  // diffing it would quietly replace a price we do not understand.
-  if (!baseItemId) {
-    throw new Error('This subscription has no plan line we recognize. Contact support.');
-  }
-
-  return { baseItemId, basePriceLookupKey, seatItemId, seatQuantity };
-}
 
 /**
  * Does this change have to be invoiced NOW, or does it ride the next invoice?

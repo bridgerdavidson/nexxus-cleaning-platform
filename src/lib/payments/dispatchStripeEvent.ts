@@ -26,6 +26,7 @@ import { LIVE_SUBSCRIPTION_STATUSES, mapSubscriptionStatus } from '@/lib/payment
 import type { OrgSubscriptionStatus } from '@/lib/billing/access';
 import { PLANS, seatLookupKeyFor, tierFor } from '@/lib/billing/plans';
 import type { BillingPeriod, PlanTier } from '@/lib/billing/plans';
+import { lookupKeyForItem } from '@/lib/billing/readCurrentItems';
 import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 export async function dispatchStripeEvent(
@@ -1522,8 +1523,13 @@ export interface MirroredPlan {
 
 /**
  * Read tier, period, and seat count off the subscription's items.
- * `items.data[].price.lookup_key` rides along on the webhook payload, so this
- * costs no extra Stripe call.
+ * `items.data[].price` rides along on the webhook payload, so this costs no
+ * extra Stripe call.
+ *
+ * Classification goes through lookupKeyForItem, the SAME rule the plan route
+ * uses, so a Price whose lookup key was transferred away by a reprice keeps
+ * mirroring instead of silently going null here while the route locks the
+ * customer out there.
  *
  * Null when nothing on the subscription parses as one of our plan prices: that
  * subscription was not created by this system, and guessing at its shape would
@@ -1538,7 +1544,7 @@ export function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null
   let seatQuantity = 0;
 
   for (const item of sub.items?.data ?? []) {
-    const key = item.price?.lookup_key ?? '';
+    const key = lookupKeyForItem(item);
     if (!key) continue;
     const parsed = tierFor(key);
     if (parsed) base = parsed;
