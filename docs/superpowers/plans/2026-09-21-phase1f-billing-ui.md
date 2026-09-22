@@ -1572,6 +1572,13 @@ The pure decision logic lives in `planPickerModel.ts` so it can be unit-tested w
     submitLabel: string                  // "Continue to payment" | "Update plan"
     onSubmit: (sel: PlanSelectionBody) => Promise<void>
     footer?: React.ReactNode             // escape hatch / extend link, supplied by the host
+    /**
+     * Invoked by the "See options" link on a tier the org is too big for (ruling R6).
+     * The host decides what that means: Settings sends them to the Cleaners page to
+     * deactivate someone; the paywall just selects the smallest tier that fits.
+     * OMIT IT and the link is not rendered at all, rather than rendering dead.
+     */
+    onResolveTooSmall?: (tier: PlanTier) => void
   }
   export function PlanPicker(props: PlanPickerProps): JSX.Element
   ```
@@ -1745,7 +1752,7 @@ Behaviour:
 - Tier state defaults to `defaultTierFor(seatsInUse, currentTier)`.
 - Seat state defaults to `Math.max(seatFloorFor(tier, seatsInUse), currentSeats ?? 0)`.
 - Changing tier re-clamps seats into `[seatFloorFor(tier, seatsInUse), PLANS[tier].maxSeats]`.
-- An unavailable tier card is not clickable, is rendered with `aria-disabled="true"` and `opacity-60`, and shows `unavailableReason` in `text-caution-700`. It also renders a `Button variant="link" size="sm"` reading "See options" that calls `onSubmit`'s host-supplied fix path; if the host passes no fix path, omit the link rather than rendering a dead control.
+- An unavailable tier card is not clickable, is rendered with `aria-disabled="true"` and `opacity-60`, and shows `unavailableReason` in `text-caution-700`. It also renders a `Button variant="link" size="sm"` reading "See options" that calls `onResolveTooSmall(tier)`. **When that prop is absent, omit the link entirely** rather than rendering a control that does nothing.
 - The selected tier card gets `border-primary ring-2 ring-primary/15`. **No ribbon, no badge** (ruling R5). The `fitReason` renders as small `text-primary` text inside the selected card.
 - The seat row reads: `Stepper` plus helper text `"{seatsInUse} in use, {included} included at no extra cost"`.
 
@@ -1802,9 +1809,15 @@ The wall itself, plus the two shell edits that put it on screen. Owner only (**r
 - Consumes: `useBilling` (Task 5), `PlanPicker` (Task 6), `startCheckout`/`changePlan`/`extendTrial` (Task 5)
 - Produces:
   ```ts
-  // usePaywall.ts: lets any "new work" button open the wall (Task 12 consumes this)
+  // usePaywall.ts: lets any "new work" button open the wall (Tasks 8 and 12 consume this)
+  //
+  // ⚠ MODULE STORE, NOT A REACT CONTEXT. Task 12's 402 net lives in a plain async
+  // function with no React tree, so it must be able to open the wall without a hook.
+  // A context-based version cannot be called from there and will have to be rewritten.
+  export function openPaywall(): void      // plain function, callable from anywhere
+  export function closePaywall(): void     // plain function
   export function usePaywall(): { open: () => void; close: () => void; isOpen: boolean }
-  export function PaywallProvider({ children }: { children: React.ReactNode }): JSX.Element
+  // Built on useSyncExternalStore over the module-level state. No provider component.
 
   // BillingPaywall.tsx
   export function BillingPaywall({ children }: { children: React.ReactNode }): JSX.Element
@@ -1814,7 +1827,13 @@ The wall itself, plus the two shell edits that put it on screen. Owner only (**r
 
 - [ ] **Step 1: Implement `usePaywall.ts`**
 
-A React context holding one boolean plus open/close. It must:
+⚠ **Revised 2026-09-22.** Implement a **module-level store**, not a React context: module-scoped
+state plus a `Set` of listeners, `openPaywall()` / `closePaywall()` exported as plain functions,
+and `usePaywall()` built on `useSyncExternalStore`. Task 12 calls `openPaywall()` from
+`billing-api.ts`, which is a plain module with no React tree, so a context cannot reach it.
+There is no `PaywallProvider`; drop it from the shell mount in Step 3.
+
+It must:
 - default `isOpen` to `true` when `access.frozen === true` and the user is the owner and `uiEnabled`;
 - default `isOpen` to `false` otherwise;
 - re-open automatically whenever `access.frozen` flips from false to true (a trial expiring while the tab is open);
@@ -1866,7 +1885,7 @@ In `src/components/redesign/shell/OperatorShell.tsx`, wrap the existing `<main>`
   {children}
 ```
 
-Wrap `{children}` in `<BillingPaywall>{children}</BillingPaywall>`, and mount `<PaywallProvider>` high enough that `OperatorTopBar` is inside it (Task 12 needs `usePaywall()` from the top bar). Keep `<main>` and its classes exactly as they are; the paywall renders inside it.
+Wrap `{children}` in `<BillingPaywall>{children}</BillingPaywall>`. **No provider is needed**: the store is module-level, so `OperatorTopBar` and every other consumer can call `usePaywall()` or `openPaywall()` without being inside a tree. Keep `<main>` and its classes exactly as they are; the paywall renders inside it.
 
 - [ ] **Step 4: Verify and commit**
 
