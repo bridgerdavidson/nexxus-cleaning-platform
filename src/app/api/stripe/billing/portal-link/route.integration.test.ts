@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+const { createBillingPortalSession, resolvePortalConfiguration } = vi.hoisted(() => ({
+  createBillingPortalSession: vi.fn(async () => ({ url: 'https://billing.stripe.test/session' })),
+  resolvePortalConfiguration: vi.fn(async () => 'bpc_test'),
+}));
+
 vi.mock('@/lib/stripe/billing', () => ({
   createStripeBillingCustomer: vi.fn(async () => ({ id: `cus_test_${crypto.randomUUID()}` })),
-  createStripeSubscription: vi.fn(async () => ({ id: 'sub_test', status: 'active' })),
   cancelStripeSubscription: vi.fn(async () => ({ id: 'sub_test', status: 'canceled' })),
-  createBillingPortalSession: vi.fn(async () => ({ url: 'https://billing.stripe.test/session' })),
+  createBillingPortalSession,
+  resolvePortalConfiguration,
 }));
 
 import { GET } from './route';
@@ -54,6 +59,12 @@ describe('GET /api/stripe/billing/portal-link', () => {
     });
     expect(status).toBe(200);
     expect(body.url).toBe('https://billing.stripe.test/session');
+
+    // The portal must run on OUR configuration: it is what disables plan changes
+    // there (they belong in the app) and enables the cancellation-reason survey.
+    expect(createBillingPortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({ configuration: 'bpc_test' }),
+    );
 
     const db = createTestSupabaseClient();
     const { data: o } = await db
