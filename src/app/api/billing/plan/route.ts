@@ -1,8 +1,10 @@
 // Change an existing plan: tier up, tier down, seats up, seats down, or the
 // monthly/annual switch, in ONE prorated subscriptions.update.
 //
-// NEVER guarded by requireWritable: an `unpaid` organization changing plan is a
-// legitimate act, and blocking it would make the paywall a dead end.
+// NEVER guarded by requireWritable: a frozen organization must still be able to
+// reach Checkout, and this route is that door when it has no live subscription.
+// An org whose card is FAILING is refused separately below, with a 409 that
+// points at the payment method rather than at a plan picker.
 //
 // Immediate prorated downgrades are an accepted deviation from the pricing
 // doc's period-end downgrades (spec §18 item 1). They avoid Subscription
@@ -28,7 +30,14 @@ import {
   type CurrentSubscriptionItems,
 } from '@/lib/billing/diffSubscriptionItems';
 import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
-import { seatLookupKeyFor, tierFor } from '@/lib/billing/plans';
+import {
+  PLAN_TIERS,
+  planChargeCents,
+  seatLookupKeyFor,
+  tierFor,
+  type BillingPeriod,
+  type PlanTier,
+} from '@/lib/billing/plans';
 
 export const runtime = 'nodejs';
 
@@ -63,6 +72,49 @@ function readCurrentItems(sub: Stripe.Subscription): CurrentSubscriptionItems {
   }
 
   return { baseItemId, basePriceLookupKey, seatItemId, seatQuantity };
+}
+
+/**
+ * Does this change have to be invoiced NOW, or does it ride the next invoice?
+ *
+ * The rule is one comparison of what Stripe charges per cycle, which reproduces
+ * the whole policy table:
+ *
+ *   | change                              | charge moves | invoice now |
+ *   | tier or seats UP                    | up           | yes         |
+ *   | tier or seats DOWN                  | down         | no          |
+ *   | monthly to annual (buying a year)   | up           | yes         |
+ *   | annual to monthly                   | down         | no          |
+ *   | same charge (a seat shuffle)        | flat         | no          |
+ *
+ * Anything that raises the charge is billed immediately, because
+ * `create_prorations` writes the proration lines without invoicing them: the
+ * money would otherwise wait for the next scheduled invoice, which on an annual
+ * plan is up to a year away. Anything that lowers it is left as a credit on the
+ * next invoice; we never refund cash for a downgrade.
+ *
+ * A stored plan we cannot read is treated as an upgrade, which fails toward
+ * charging rather than toward giving away service.
+ */
+function shouldInvoiceNow(
+  stored: { planTier: string | null; billingPeriod: string | null; seatCount: number | null },
+  target: { tier: PlanTier; period: BillingPeriod; seatCount: number },
+): boolean {
+  const tier = stored.planTier as PlanTier | null;
+  const period = stored.billingPeriod as BillingPeriod | null;
+  const seats = stored.seatCount;
+
+  const readable =
+    tier != null &&
+    PLAN_TIERS.includes(tier) &&
+    (period === 'monthly' || period === 'annual') &&
+    typeof seats === 'number' &&
+    Number.isFinite(seats);
+  if (!readable) return true;
+
+  const currentCents = planChargeCents(tier, period, seats);
+  const targetCents = planChargeCents(target.tier, target.period, target.seatCount);
+  return targetCents > currentCents;
 }
 
 export async function POST(request: NextRequest) {
@@ -121,13 +173,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: { checkout_url: checkoutUrl } });
     }
 
+    // A failing card and a proration do not mix: `always_invoice` would add a
+    // charge on top of one Stripe is already retrying, and `create_prorations`
+    // on a downgrade would mint credit out of time the org has not paid for.
+    // Refused only once there IS a live subscription, so the checkout fallback
+    // above still works and the paywall never becomes a dead end.
+    if (live.status === 'past_due' || live.status === 'unpaid') {
+      return NextResponse.json(
+        {
+          error: 'billing_payment_required',
+          message: 'Please update your payment method before changing your plan.',
+          state: live.status,
+        },
+        { status: 409 },
+      );
+    }
+
     const subscriptionId = live.subscriptionId!;
     const sub = await retrieveSubscription(subscriptionId);
     const current = readCurrentItems(sub);
     const prices = await resolvePrices();
     const items = diffSubscriptionItems(current, { tier, period, seatCount }, prices);
 
-    await updateSubscriptionItems(subscriptionId, items, organizationId);
+    // PR F's preview endpoint MUST use this same direction logic, or the amount it
+    // quotes will not match the amount charged. Extract this into a shared helper
+    // when that endpoint lands.
+    const invoiceNow = shouldInvoiceNow(live, { tier, period, seatCount });
+
+    await updateSubscriptionItems(subscriptionId, items, organizationId, { invoiceNow });
 
     // Mirror immediately so the UI does not lag; the customer.subscription.updated
     // webhook is the real source of truth and overwrites these within seconds.
@@ -140,6 +213,7 @@ export async function POST(request: NextRequest) {
       tier,
       period,
       seat_count: seatCount,
+      invoiced_now: invoiceNow,
       changed_by: auth.userId,
     });
 

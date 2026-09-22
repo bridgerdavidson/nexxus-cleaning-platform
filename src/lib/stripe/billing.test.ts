@@ -198,24 +198,42 @@ describe('createBillingCheckoutSession payload', () => {
 });
 
 describe('updateSubscriptionItems payload', () => {
+  const items = [{ id: 'si_base', price: 'p_gm' }];
+  const updatedParams = () => subscriptionsUpdate.mock.calls[0][1] as Record<string, unknown>;
+
   beforeEach(() => {
     subscriptionsUpdate.mockReset();
     subscriptionsUpdate.mockResolvedValue({ id: 'sub_1', status: 'active' });
   });
 
-  it('prorates immediately in both directions, which is what avoids Subscription Schedules', async () => {
-    await updateSubscriptionItems('sub_1', [{ id: 'si_base', price: 'p_gm' }], 'org-1');
+  // create_prorations writes the proration LINES but never invoices them, so an
+  // upgrade's extra money would wait for the next scheduled invoice: one month
+  // late on monthly, up to a year late on annual.
+  it('invoices an upgrade immediately and fails closed on a declined card', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
     const [id, params] = subscriptionsUpdate.mock.calls[0] as [string, Record<string, unknown>];
     expect(id).toBe('sub_1');
+    expect(params.proration_behavior).toBe('always_invoice');
+    expect(params.payment_behavior).toBe('error_if_incomplete');
+  });
+
+  it('defers a downgrade to the next invoice and never charges now', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: false });
+    const params = updatedParams();
     expect(params.proration_behavior).toBe('create_prorations');
-    expect(params.items).toEqual([{ id: 'si_base', price: 'p_gm' }]);
-    expect(params.metadata).toEqual({ organization_id: 'org-1' });
+    // Present-and-undefined would still be sent as a key; it must be absent.
+    expect('payment_behavior' in params).toBe(false);
+  });
+
+  it('sends the items and the org tag either way', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: false });
+    expect(updatedParams().items).toEqual([{ id: 'si_base', price: 'p_gm' }]);
+    expect(updatedParams().metadata).toEqual({ organization_id: 'org-1' });
   });
 
   it('never pins payment_method_types on the update either', async () => {
-    await updateSubscriptionItems('sub_1', [{ id: 'si_base', price: 'p_gm' }], 'org-1');
-    const params = subscriptionsUpdate.mock.calls[0][1] as Record<string, unknown>;
-    expect('payment_method_types' in params).toBe(false);
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
+    expect('payment_method_types' in updatedParams()).toBe(false);
   });
 });
 

@@ -48,6 +48,8 @@ interface PlanResponse {
   success?: boolean;
   data?: { updated?: boolean; checkout_url?: string };
   error?: string;
+  message?: string;
+  state?: string;
 }
 
 const changePlan = (token: string, body: Record<string, unknown>) =>
@@ -68,11 +70,32 @@ async function promoteToOwner(organizationId: string, userId: string) {
   if (error) throw new Error(`promote to owner failed: ${error.message}`);
 }
 
-/** Put the org in a state where a subscription exists to change. */
-async function withLiveSubscription(organizationId: string, status = 'active') {
+/**
+ * Put the org in a state where a subscription exists to change.
+ *
+ * The stored plan columns matter now: the route compares what they charge
+ * against what was asked for to decide whether Stripe invoices the change
+ * immediately, so leaving them null would silently exercise the fail-safe
+ * "treat it as an upgrade" branch in every test.
+ */
+async function withLiveSubscription(
+  organizationId: string,
+  status = 'active',
+  stored: { tier: string; period: string; seats: number } = {
+    tier: 'starter',
+    period: 'monthly',
+    seats: 3,
+  },
+) {
   const { error } = await supabase
     .from('organizations')
-    .update({ subscription_id: 'sub_test_live', subscription_status: status })
+    .update({
+      subscription_id: 'sub_test_live',
+      subscription_status: status,
+      plan_tier: stored.tier,
+      billing_period: stored.period,
+      seat_count: stored.seats,
+    })
     .eq('id', organizationId);
   if (error) throw new Error(`live subscription setup failed: ${error.message}`);
 }
@@ -110,8 +133,8 @@ describe('POST /api/billing/plan', () => {
       expect(res.status).toBe(200);
       expect(res.body.data?.updated).toBe(true);
       expect(updateMock).toHaveBeenCalledTimes(1);
-      // Base price swapped in place; a seat line opened for the two extras.
-      // proration_behavior: 'create_prorations' lives in the wrapper itself.
+      // Base price swapped in place; a seat line opened for the two extras. The
+      // proration_behavior the fourth argument selects lives in the wrapper.
       expect(updateMock.mock.calls[0][0]).toBe('sub_test_live');
       expect(updateMock.mock.calls[0][1]).toEqual([
         { id: 'si_base', price: 'p_gm' },
@@ -209,13 +232,21 @@ describe('POST /api/billing/plan', () => {
     }
   });
 
-  it('still works for an unpaid org, because changing plan is not a write we freeze', async () => {
-    process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+  // Prorating against time the customer has not paid for mints credit balance on
+  // a downgrade and stacks a second charge on an upgrade, so a failing card has
+  // to be fixed first. The refusal names the payment method, not a plan picker.
+  it.each(['past_due', 'unpaid'])('refuses a %s org with 409 and never touches Stripe', async (status) => {
     const org = await withTestOrg();
     try {
       await promoteToOwner(org.organizationId, org.admin.userId);
-      await withLiveSubscription(org.organizationId, 'unpaid');
+      await withLiveSubscription(org.organizationId, status, {
+        tier: 'growth',
+        period: 'monthly',
+        seats: 8,
+      });
       stubSubscription([{ id: 'si_base', lookup: 'growth_monthly' }]);
+      updateMock.mockClear();
+      retrieveMock.mockClear();
 
       const res = await changePlan(org.admin.accessToken, {
         organization_id: org.organizationId,
@@ -223,10 +254,37 @@ describe('POST /api/billing/plan', () => {
         period: 'monthly',
         seat_count: 3,
       });
-      expect(res.status).toBe(200);
-      expect(res.body.data?.updated).toBe(true);
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('billing_payment_required');
+      expect(res.body.message).toBe('Please update your payment method before changing your plan.');
+      expect(updateMock).not.toHaveBeenCalled();
+      expect(retrieveMock).not.toHaveBeenCalled();
     } finally {
-      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+      await org.cleanup();
+    }
+  });
+
+  // The 409 above must not turn the paywall into a dead end: an org with no live
+  // subscription still gets a Checkout link no matter what its status says.
+  it('a frozen org with no live subscription still reaches checkout', async () => {
+    const org = await withTestOrg();
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      await supabase
+        .from('organizations')
+        .update({ subscription_id: null, subscription_status: 'unpaid' })
+        .eq('id', org.organizationId);
+      checkoutMock.mockClear();
+
+      const res = await changePlan(org.admin.accessToken, {
+        organization_id: org.organizationId,
+        tier: 'growth',
+        period: 'monthly',
+        seat_count: 8,
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data?.checkout_url).toBe('https://checkout.stripe.test/session');
+    } finally {
       await org.cleanup();
     }
   });
@@ -386,6 +444,130 @@ describe('POST /api/billing/plan', () => {
     } finally {
       await org.cleanup();
     }
+  });
+
+  // ── Which changes Stripe bills NOW ──────────────────────────────────────────
+  //
+  // The wrapper turns this boolean into always_invoice vs create_prorations. Get
+  // it wrong upward and an annual customer gets a year of extra seats free; get
+  // it wrong downward and a downgrade charges cash it should only credit.
+  describe('invoice-now direction', () => {
+    const invoiceNowFor = async (
+      stored: { tier: string; period: string; seats: number },
+      target: { tier: string; period: string; seat_count: number },
+      currentLookup: string,
+    ) => {
+      const org = await withTestOrg();
+      try {
+        await promoteToOwner(org.organizationId, org.admin.userId);
+        await withLiveSubscription(org.organizationId, 'active', stored);
+        stubSubscription([{ id: 'si_base', lookup: currentLookup }]);
+        updateMock.mockClear();
+
+        const res = await changePlan(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          ...target,
+        });
+        expect(res.status).toBe(200);
+        return (updateMock.mock.calls[0][3] as { invoiceNow: boolean }).invoiceNow;
+      } finally {
+        await org.cleanup();
+      }
+    };
+
+    it('bills a tier upgrade now', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'starter', period: 'monthly', seats: 3 },
+          { tier: 'growth', period: 'monthly', seat_count: 8 },
+          'starter_monthly',
+        ),
+      ).toBe(true);
+    });
+
+    it('bills extra seats now', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'growth', period: 'monthly', seats: 8 },
+          { tier: 'growth', period: 'monthly', seat_count: 12 },
+          'growth_monthly',
+        ),
+      ).toBe(true);
+    });
+
+    // A year of service bought up front is the largest immediate charge there is,
+    // so it is the one this must never defer.
+    it('bills a switch to annual now', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'growth', period: 'monthly', seats: 8 },
+          { tier: 'growth', period: 'annual', seat_count: 8 },
+          'growth_monthly',
+        ),
+      ).toBe(true);
+    });
+
+    it('defers a tier downgrade to the next invoice', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'growth', period: 'monthly', seats: 8 },
+          { tier: 'starter', period: 'monthly', seat_count: 3 },
+          'growth_monthly',
+        ),
+      ).toBe(false);
+    });
+
+    it('defers a switch back to monthly', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'growth', period: 'annual', seats: 8 },
+          { tier: 'growth', period: 'monthly', seat_count: 8 },
+          'growth_annual',
+        ),
+      ).toBe(false);
+    });
+
+    it('defers a change that costs exactly the same', async () => {
+      expect(
+        await invoiceNowFor(
+          { tier: 'growth', period: 'monthly', seats: 8 },
+          { tier: 'growth', period: 'monthly', seat_count: 8 },
+          'growth_monthly',
+        ),
+      ).toBe(false);
+    });
+
+    // Fail toward charging: an unreadable stored plan must not hand out a free
+    // upgrade, and an over-charge is recoverable where an under-charge is not.
+    it('treats an unreadable stored plan as an upgrade', async () => {
+      const org = await withTestOrg();
+      try {
+        await promoteToOwner(org.organizationId, org.admin.userId);
+        await supabase
+          .from('organizations')
+          .update({
+            subscription_id: 'sub_test_live',
+            subscription_status: 'active',
+            plan_tier: null,
+            billing_period: null,
+            seat_count: null,
+          })
+          .eq('id', org.organizationId);
+        stubSubscription([{ id: 'si_base', lookup: 'growth_monthly' }]);
+        updateMock.mockClear();
+
+        const res = await changePlan(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          tier: 'starter',
+          period: 'monthly',
+          seat_count: 3,
+        });
+        expect(res.status).toBe(200);
+        expect((updateMock.mock.calls[0][3] as { invoiceNow: boolean }).invoiceNow).toBe(true);
+      } finally {
+        await org.cleanup();
+      }
+    });
   });
 
   it('refuses a subscription with no plan line it recognizes', async () => {

@@ -291,6 +291,15 @@ export interface LiveSubscriptionLookup {
   subscriptionId: string | null;
   status: string | null;
   hasLiveSub: boolean;
+  /**
+   * What the org is on TODAY, as last mirrored from Stripe. The plan route needs
+   * it to tell an upgrade from a downgrade, and reads it from here rather than
+   * running a second query for three columns of the row this already loaded.
+   * Null on an org that has never bought anything.
+   */
+  planTier: string | null;
+  billingPeriod: string | null;
+  seatCount: number | null;
 }
 
 /**
@@ -312,12 +321,22 @@ export async function readLiveSubscription(
 ): Promise<LiveSubscriptionLookup> {
   const { data, error } = await supabase
     .from('organizations')
-    .select('subscription_id, subscription_status')
+    .select('subscription_id, subscription_status, plan_tier, billing_period, seat_count')
     .eq('id', organizationId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!data) return { found: false, subscriptionId: null, status: null, hasLiveSub: false };
+  if (!data) {
+    return {
+      found: false,
+      subscriptionId: null,
+      status: null,
+      hasLiveSub: false,
+      planTier: null,
+      billingPeriod: null,
+      seatCount: null,
+    };
+  }
 
   const subscriptionId = (data.subscription_id as string | null) ?? null;
   const status = (data.subscription_status as string | null) ?? null;
@@ -327,5 +346,8 @@ export async function readLiveSubscription(
     subscriptionId,
     status,
     hasLiveSub: Boolean(subscriptionId) && LIVE_SUBSCRIPTION_STATUSES.includes(status ?? ''),
+    planTier: (data.plan_tier as string | null) ?? null,
+    billingPeriod: (data.billing_period as string | null) ?? null,
+    seatCount: (data.seat_count as number | null) ?? null,
   };
 }

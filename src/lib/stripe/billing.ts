@@ -217,19 +217,44 @@ export async function listCustomerSubscriptions(
 
 /**
  * One call handles tier up, tier down, seats up, seats down, and the interval
- * switch. Prorated immediately in both directions, which is what lets us avoid
- * Subscription Schedules entirely.
+ * switch. Prorated in both directions, which is what lets us avoid Subscription
+ * Schedules entirely.
+ *
+ * `invoiceNow` is the whole money decision, and it is REQUIRED rather than
+ * defaulted so every call site has to state its intent:
+ *
+ *  - true  -> `always_invoice`. Stripe writes the proration lines AND bills them
+ *             right now. Without it `create_prorations` only writes the lines and
+ *             leaves them for the next scheduled invoice, so an upgrade's extra
+ *             money arrives a month late on monthly and up to a YEAR late on
+ *             annual. Paired with `error_if_incomplete` so a declined card
+ *             rejects the change instead of leaving the customer upgraded with an
+ *             unpaid invoice.
+ *  - false -> `create_prorations`. The credit from a downgrade lands on the next
+ *             invoice; we never refund cash for one.
+ *
+ * The caller decides the direction, because only it knows what the org is on
+ * today. See the direction table in src/app/api/billing/plan/route.ts.
  */
 export async function updateSubscriptionItems(
   subscriptionId: string,
   items: Stripe.SubscriptionUpdateParams.Item[],
   organizationId: string,
+  opts: { invoiceNow: boolean },
 ): Promise<Stripe.Subscription> {
-  return getStripe().subscriptions.update(subscriptionId, {
+  const params: Stripe.SubscriptionUpdateParams = {
     items,
-    proration_behavior: 'create_prorations',
     metadata: { organization_id: organizationId },
-  });
+    proration_behavior: opts.invoiceNow ? 'always_invoice' : 'create_prorations',
+  };
+
+  // Set only on the invoicing path: the key must be ABSENT, not present and
+  // undefined, on a downgrade.
+  if (opts.invoiceNow) {
+    params.payment_behavior = 'error_if_incomplete';
+  }
+
+  return getStripe().subscriptions.update(subscriptionId, params);
 }
 
 // ---------------------------------------------------------------------------
