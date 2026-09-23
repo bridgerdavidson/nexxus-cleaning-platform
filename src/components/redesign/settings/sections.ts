@@ -1,9 +1,9 @@
 // src/components/redesign/settings/sections.ts
-import { User, CreditCard, Receipt, Wallet, CalendarClock, Users, Palette, PanelLeft, type LucideIcon } from "lucide-react";
+import { User, CreditCard, Gem, Receipt, Wallet, CalendarClock, Users, Palette, PanelLeft, type LucideIcon } from "lucide-react";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
 
 export type SettingsSectionId =
-  | "profile" | "appearance" | "branding" | "payments" | "cancellation" | "payout" | "cleaner-experience" | "business-hours";
+  | "profile" | "appearance" | "branding" | "payments" | "billing" | "cancellation" | "payout" | "cleaner-experience" | "business-hours";
 export type SettingsGroupId = "account" | "business";
 
 export interface RedesignSettingsSection {
@@ -27,6 +27,11 @@ export const REDESIGN_SETTINGS_SECTIONS: RedesignSettingsSection[] = [
   { id: "appearance", label: "Appearance", icon: PanelLeft, group: "account" },
   { id: "branding", label: "Branding", icon: Palette, group: "business", roles: ["owner", "admin"] },
   { id: "payments", label: "Payments", icon: CreditCard, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
+  // Gem, not CreditCard: `payments` already owns CreditCard and two identical
+  // glyphs in the same nav group are unreadable at a glance.
+  // Owner AND admin see the section (ruling R15 v3); the owner-only money
+  // controls inside it are disabled with a reason, never hidden.
+  { id: "billing", label: "Plan and billing", icon: Gem, group: "business", roles: ["owner", "admin"] },
   { id: "cancellation", label: "Cancellation policy", icon: Receipt, group: "business", roles: ["admin", "owner"] },
   { id: "payout", label: "Payout settings", icon: Wallet, group: "business", roles: ["owner"] },
   { id: "cleaner-experience", label: "Cleaner experience", icon: Users, group: "business", roles: ["admin", "owner"] },
