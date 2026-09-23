@@ -37,13 +37,21 @@ export interface BillingSectionAction {
   label: string
   variant: 'default' | 'outline' | 'link'
   /**
-   * Ruling R15 v3: a control that CHANGES MONEY is owner only. An admin sees
-   * it disabled with a reason, never hidden, because a hidden control teaches
-   * nothing. Everything marked here maps to a server route that already
-   * refuses a non-owner (`allowedRoles: ['owner']` on /api/billing/plan and
-   * /api/billing/trial/extend), so the disabled state is honest rather than
-   * decorative. The portal actions are NOT owner only: the portal route
-   * allows owner and admin, so an admin really can reach invoices there.
+   * Ruling R15 v4: REMEDIATION IS NOT PURCHASE.
+   *
+   * A PURCHASE action alters what is owed (Choose a plan, Change plan, Extend
+   * your trial). Owner only. An admin sees it disabled with a reason, never
+   * hidden, because a hidden control teaches nothing. Each one maps to a
+   * server route that already refuses a non-owner (`allowedRoles: ['owner']`
+   * on /api/billing/plan and /api/billing/trial/extend), so the disabled
+   * state is honest rather than decorative.
+   *
+   * A REMEDIATION action keeps an existing agreement alive (Update payment
+   * method, Reactivate, view invoices). Every one of them opens the Stripe
+   * Customer Portal, whose route allows `['owner', 'admin']`, so both roles
+   * get it LIVE here and in the shell banner. An owner on holiday must not be
+   * able to freeze a business the admin running it day to day is powerless to
+   * rescue; an admin still cannot change the price.
    */
   ownerOnly: boolean
 }
@@ -129,6 +137,13 @@ const CHANGE_PLAN_SECONDARY: BillingSectionAction = { ...CHANGE_PLAN, variant: '
 const EXTEND: BillingSectionAction = {
   kind: 'extend', label: 'Extend your trial by seven days', variant: 'link', ownerOnly: true,
 }
+// The three remediation actions. All of them open the Stripe Customer Portal
+// (BillingSection routes every kind except the picker pair and `extend`
+// through openPortal), so all three carry the portal's own audience: owner
+// AND admin. Reactivate reads like a purchase and is not one: it fixes the
+// card behind a subscription that already exists, which is why it lands in
+// the portal rather than the plan picker (`pickerSubmitLabel` is null on that
+// branch).
 const PORTAL: BillingSectionAction = {
   kind: 'portal', label: 'Payment method and invoices', variant: 'outline', ownerOnly: false,
 }
@@ -136,7 +151,7 @@ const UPDATE_PAYMENT: BillingSectionAction = {
   kind: 'update-payment', label: 'Update payment method', variant: 'default', ownerOnly: false,
 }
 const REACTIVATE: BillingSectionAction = {
-  kind: 'reactivate', label: 'Reactivate', variant: 'default', ownerOnly: true,
+  kind: 'reactivate', label: 'Reactivate', variant: 'default', ownerOnly: false,
 }
 
 /** Opening Checkout, versus editing a subscription that already exists. */
@@ -372,8 +387,11 @@ export interface ActionState {
 }
 
 /**
- * Ruling R15 v3. Disabled with a reason, NEVER hidden: an admin who cannot
- * find the control learns nothing, and asks the owner nothing.
+ * Ruling R15 v4. A purchase action an admin may not use is disabled with a
+ * reason, NEVER hidden: an admin who cannot find the control learns nothing,
+ * and asks the owner nothing. A remediation action (`ownerOnly: false`) is
+ * live for both roles, which is what keeps this surface and the shell banner
+ * from answering the same question two different ways.
  */
 export function actionStateFor(action: BillingSectionAction, isOwner: boolean): ActionState {
   if (action.ownerOnly && !isOwner) return { disabled: true, reason: OWNER_ONLY_REASON }

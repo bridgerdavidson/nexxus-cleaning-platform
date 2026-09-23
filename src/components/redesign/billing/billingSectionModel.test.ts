@@ -272,7 +272,7 @@ describe('billingSectionView: past_due', () => {
 // ---------------------------------------------------------------------------
 
 describe('billingSectionView: unpaid', () => {
-  it('sends the owner to the portal and offers no plan picker: the card needs fixing, not a new plan', () => {
+  it('sends them to the portal and offers no plan picker: the card needs fixing, not a new plan', () => {
     const spec = specFor({ access: ACCESS_FOR.unpaid })
     expect(kinds(spec)).toEqual(['reactivate'])
     expect(spec.pickerSubmitLabel).toBeNull()
@@ -350,13 +350,16 @@ describe('the two no-control states', () => {
 
 describe('actionStateFor', () => {
   // Mutation target: "give an admin a live Change plan button".
-  it('disables EVERY money control for a non-owner, with the reason, across all eight states', () => {
-    const moneyKinds = ['choose-plan', 'change-plan', 'extend', 'reactivate']
+  // `reactivate` is deliberately NOT in this list: it opens the Stripe portal,
+  // which makes it remediation, not purchase (ruling R15 v4). It is covered by
+  // the portal test below and by billingActionParity.test.ts.
+  it('disables EVERY purchase control for a non-owner, with the reason, across all eight states', () => {
+    const purchaseKinds = ['choose-plan', 'change-plan', 'extend']
     let seen = 0
     for (const state of ALL_STATES) {
       for (const action of specFor({ access: ACCESS_FOR[state] }).actions) {
         const asAdmin = actionStateFor(action, false)
-        if (moneyKinds.includes(action.kind)) {
+        if (purchaseKinds.includes(action.kind)) {
           seen += 1
           expect(action.ownerOnly, `${state}/${action.kind}`).toBe(true)
           expect(asAdmin, `${state}/${action.kind}`).toEqual({
@@ -376,10 +379,17 @@ describe('actionStateFor', () => {
     expect(seen).toBeGreaterThanOrEqual(5)
   })
 
-  it('leaves the portal enabled for an admin: that route really does allow them', () => {
+  // Mutation target: "make Reactivate owner only again". Every one of these
+  // three kinds opens the Stripe Customer Portal, whose route allows owner and
+  // admin, so all three must be LIVE for an admin.
+  it('leaves every portal action enabled for an admin: that route really does allow them', () => {
+    const portalKinds = ['portal', 'update-payment', 'reactivate']
+    let seen = 0
     for (const state of ALL_STATES) {
       for (const action of specFor({ access: ACCESS_FOR[state] }).actions) {
-        if (action.kind === 'portal' || action.kind === 'update-payment') {
+        if (portalKinds.includes(action.kind)) {
+          seen += 1
+          expect(action.ownerOnly, `${state}/${action.kind}`).toBe(false)
           expect(actionStateFor(action, false), `${state}/${action.kind}`).toEqual({
             disabled: false,
             reason: null,
@@ -387,6 +397,9 @@ describe('actionStateFor', () => {
         }
       }
     }
+    // Guards the loop against vacuity, and pins the three states that carry a
+    // portal action: active, past_due, unpaid, canceled.
+    expect(seen).toBeGreaterThanOrEqual(4)
   })
 
   it('says exactly "Only the account owner can change the plan."', () => {

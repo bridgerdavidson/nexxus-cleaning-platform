@@ -153,10 +153,18 @@ export function billingBanner(input: BillingBannerInput): BannerSpec | null {
   // blocks bookings and a manager has nothing actionable to learn from it.
   if (access.state === 'past_due') {
     if (!canSeeBillingChrome) return null
+    // Ruling R15 v4, remediation is not purchase. Updating the card keeps an
+    // existing agreement alive; it does not change what is owed. So its
+    // audience is the canSeeBillingChrome gate just above (owner AND admin),
+    // the same audience Settings gives it and the same one
+    // /api/stripe/billing/portal-link already allows. An owner on holiday
+    // must not be able to freeze a business the admin running it day to day
+    // is powerless to rescue. Purchase actions (Choose a plan, Extend) stay
+    // owner only, below.
     return {
       tone: 'critical',
       message: PAST_DUE_MESSAGE,
-      actions: isOwner ? [UPDATE_PAYMENT_ACTION] : [],
+      actions: [UPDATE_PAYMENT_ACTION],
     }
   }
 

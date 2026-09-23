@@ -174,11 +174,15 @@ describe('billingBanner: past_due', () => {
     })
   })
 
-  // Mutation target: "give a non-owner the pay CTA".
-  it('gives the admin the same message with NO action', () => {
-    const spec = billingBanner(pastDue({ isOwner: false, canSeeBillingChrome: true }))
-    expect(spec?.tone).toBe('critical')
-    expect(spec?.actions).toEqual([])
+  // Mutation target: "revert the banner action to isOwner". Ruling R15 v4:
+  // remediation is not purchase, so fixing a failed card is owner AND admin,
+  // exactly as Settings and /api/stripe/billing/portal-link already allow.
+  it('gives the admin the same message and the SAME live Update payment method CTA', () => {
+    const owner = billingBanner(pastDue({ isOwner: true }))
+    const admin = billingBanner(pastDue({ isOwner: false, canSeeBillingChrome: true }))
+    expect(admin?.tone).toBe('critical')
+    expect(admin?.actions).toEqual([{ kind: 'update-payment', label: 'Update payment method', variant: 'outline' }])
+    expect(admin).toEqual(owner)
   })
 
   it('shows nothing to a manager: past_due never blocks bookings, nothing to learn here', () => {
@@ -405,7 +409,8 @@ describe('exactly one banner (or none), across every reachable billing row', () 
         // function with early returns, so there is only ever one BannerSpec
         // object or null. This loop's job is to make sure it never throws
         // and that the returned actions are internally consistent with the
-        // role (no actions for a non-owner, ever).
+        // role: a manager gets nothing at all, and a non-owner never gets a
+        // PURCHASE action (ruling R15 v4, remediation is not purchase).
         const spec = billingBanner({
           uiEnabled: true,
           access: derived,
@@ -413,8 +418,13 @@ describe('exactly one banner (or none), across every reachable billing row', () 
           canSeeBillingChrome,
           pauseResumesAt: r.billing_pause_resumes_at,
         })
+        const label = `${r.subscription_status}/${isOwner}/${canSeeBillingChrome}`
+        if (spec && !canSeeBillingChrome) {
+          expect(spec.actions, label).toEqual([])
+        }
         if (spec && !isOwner) {
-          expect(spec.actions, `${r.subscription_status}/${isOwner}/${canSeeBillingChrome}`).toEqual([])
+          // 'update-payment' is the banner's only remediation kind today.
+          expect(spec.actions.map((a) => a.kind).filter((k) => k !== 'update-payment'), label).toEqual([])
         }
       }
     }
