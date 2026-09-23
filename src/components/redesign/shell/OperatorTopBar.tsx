@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
 import { OrgSwitcherMenuItems } from "@/components/redesign/shared/OrgSwitcherMenuItems";
+import { TrialPill } from "@/components/redesign/billing/TrialPill";
 
 type Profile = { firstName?: string; lastName?: string; avatarUrl?: string };
 
@@ -74,6 +75,10 @@ export function OperatorTopBar({
       </Button>
 
       <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
+        {/* Step 1 of the billing severity ladder (ruling R13). Renders null for
+            everyone outside a live trial; owner/admin only (see TrialPill). */}
+        <TrialPill />
+
         {/* Hidden (not just disabled) for a manager without can_edit_bookings: see
             OperatorShell, which only passes onNewBooking when the viewer is allowed. */}
         {onNewBooking ? (

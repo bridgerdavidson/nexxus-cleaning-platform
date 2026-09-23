@@ -15,6 +15,7 @@ import { OperatorMobileNav } from "./OperatorMobileNav";
 import { RedesignImpersonationBanner } from "./RedesignImpersonationBanner";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { BillingPaywall } from "@/components/redesign/billing/BillingPaywall";
+import { BillingBanners } from "@/components/redesign/billing/BillingBanners";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { OperatorBookingDetailHost } from "@/components/redesign/bookings/OperatorBookingDetailHost";
@@ -114,6 +115,7 @@ export function OperatorShell({
           )}
         >
           <RedesignImpersonationBanner />
+          <BillingBanners />
           <OperatorTopBar
             onNewBooking={onNewBooking}
             onOpenSearch={() => setSearchOpen(true)}
