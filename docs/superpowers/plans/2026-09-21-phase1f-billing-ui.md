@@ -1197,8 +1197,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        // A downgrade is never billed now, whatever the preview invoice says:
-        // updateSubscriptionItems leaves it as credit (spec 10.4).
+        // SUPERSEDED by ruling R21 v2: shipped code quotes
+        // summarizePreviewInvoice(invoice, prorationDate).dueNowCents for EVERY
+        // direction. Forcing a non-upgrade to zero is the bug v2 removed.
         due_now_cents: invoiceNow ? (invoice.amount_due ?? 0) : 0,
         recurring_cents: planChargeCents(tier, period, seatCount) + taxCents,
         next_charge_at: invoice.next_payment_attempt
@@ -1762,17 +1763,16 @@ Summary rail (**ruling R7**: itemise freely, but the total is always prominent):
 - Line: `{Plan name}, {monthly|yearly}` and the base price.
 - Line: `{n} seats, {included} included` and the extra-seat cost, or `$0.00`.
 - Line, only when `preview.tax_excluded === false`: `Sales tax` and `formatCents(preview.tax_cents)`.
-- Total line, visually dominant: `Due today` and `formatCents(preview.due_now_cents)`.
+- Total line, visually dominant: the label from `totalRowFor` and `formatCents(preview.due_now_cents)`.
 - Beneath: `Then {formatCents(recurring_cents)} on {formatBillingDate(next_charge_at)}.` plus `Cancel anytime.` **only when period === 'monthly'** (ruling R11).
-- **The total line's LABEL is driven by `preview.direction`** (ruling R21, and spec §10.4). PR E was corrected on 2026-09-22 so only upgrades invoice immediately:
+- **The total line's LABEL is driven by the COMPUTED AMOUNT, never by `preview.direction`** (ruling R21 v2, and spec §10.4):
 
-  | `direction` | Label | Amount |
+  | `due_now_cents` | Label | Amount |
   |---|---|---|
-  | `upgrade` | `Charged today` | `formatCents(due_now_cents)` |
-  | `downgrade` | `Credited to your next invoice` | `formatCents(recurring_cents)` as the new recurring figure, and NO today figure |
-  | `unchanged` | `Your bill does not change` | no amount |
+  | above zero | `Charged today` | `formatCents(due_now_cents)` |
+  | zero | `Nothing is charged today` | `formatCents(0)` |
 
-  A blanket "Due today" is wrong for a downgrade, which bills nothing now and lands as credit. Writing it anyway is the surprise-at-checkout failure ruling R8 exists to prevent, pointed at ourselves.
+  `direction` still shapes the sentence UNDER the total: a downgrade that costs nothing today says `Nothing is charged today. Your plan changes to this price on {date}.`, and a downgrade that is billed today (the annual to monthly switch) says `Your unused time is credited against today's amount. Then {amount} on {date}.` It may never decide, or contradict, the headline figure. Saying "nothing is charged today" over a live charge is the surprise-at-checkout failure ruling R8 exists to prevent, pointed at ourselves.
 - When `preview.tax_excluded === true`, add the line `Sales tax is calculated at checkout.` This is the honesty valve for R8 when the tax flag is off.
 
 Preview wiring:

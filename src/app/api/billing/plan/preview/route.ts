@@ -34,7 +34,12 @@ import { billingTaxEnabled } from '@/lib/billing/flags';
 export const runtime = 'nodejs';
 
 export interface PlanPreviewPayload {
-  /** Charged now, in cents, tax included when the tax flag is on. 0 for a downgrade. */
+  /**
+   * Charged now, in cents, tax included when the tax flag is on. Whatever the
+   * preview invoice computes, never forced by direction (ruling R21 v2): a pure
+   * downgrade reaches zero on its own, while an annual to monthly switch resets
+   * the billing cycle and really is billed today.
+   */
   due_now_cents: number;
   /** What the plan costs per period after this change, tax included when known. */
   recurring_cents: number;
@@ -45,7 +50,10 @@ export interface PlanPreviewPayload {
   /** True when the quote excludes tax, so the UI says tax is added at checkout. */
   tax_excluded: boolean;
   is_new_subscription: boolean;
-  /** Drives the copy (ruling R21). An upgrade is charged now; a downgrade is credited. */
+  /**
+   * Drives the SUPPORTING copy only (ruling R21 v2). The headline amount and
+   * its label come from due_now_cents; direction explains a downgrade's credit.
+   */
   direction: PlanChangeDirection;
 }
 
@@ -136,22 +144,27 @@ export async function POST(request: NextRequest) {
     const totals = summarizePreviewInvoice(invoice, prorationDate);
     const direction = directionOf(live, target);
 
-    // A downgrade is never billed now, whatever the preview invoice shows: the
-    // apply call leaves it as create_prorations, so the money lands as credit on
-    // the next invoice (spec §10.4, ruling R21).
-    const dueNow = direction === 'upgrade' ? totals.dueNowCents : 0;
-
+    // Ruling R21 v2: the quote is whatever the invoice computes, for every
+    // direction. summarizePreviewInvoice already splits the lines by period
+    // against this pinned proration_date and applies the credit balance, so a
+    // pure tier downgrade's negative prorations floor to zero on their own. An
+    // annual to monthly switch does NOT: changing the interval resets the
+    // billing cycle, so the new period's line starts at the proration date and
+    // is billed today. Forcing that to zero would print "Nothing is charged
+    // today" on a screen where Stripe invoices.
     return NextResponse.json({
       success: true,
       data: {
-        due_now_cents: dueNow,
+        due_now_cents: totals.dueNowCents,
         // The preview's own future-period lines when it has them: they carry the
         // new prices, any coupon, and tax, which the sticker price does not.
         recurring_cents: totals.recurringCents ?? planChargeCents(tier, period, seatCount),
         next_charge_at: invoice.next_payment_attempt
           ? new Date(invoice.next_payment_attempt * 1000).toISOString()
           : null,
-        tax_cents: dueNow > 0 ? totals.dueNowTaxCents : 0,
+        // Already clamped to [0, dueNowCents] by summarizePreviewInvoice, so a
+        // zero quote carries zero tax without a second rule here.
+        tax_cents: totals.dueNowTaxCents,
         tax_excluded: !taxOn,
         is_new_subscription: false,
         direction,

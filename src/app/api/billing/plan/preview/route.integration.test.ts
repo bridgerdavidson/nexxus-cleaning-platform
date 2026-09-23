@@ -25,6 +25,7 @@ vi.mock('@/lib/stripe/billing', async (importOriginal) => ({
 import { POST } from './route';
 import type { PlanPreviewPayload } from './route';
 import { previewSubscriptionChange, resolvePrices, retrieveSubscription } from '@/lib/stripe/billing';
+import { renewalNoteFor, totalRowFor } from '@/components/redesign/billing/planPickerModel';
 import { withTestOrg } from '@/../tests/helpers/fixtures';
 import { bearerHeader, callRoute } from '@/../tests/helpers/auth';
 import { createTestSupabaseClient } from '@/../tests/helpers/supabase';
@@ -75,6 +76,16 @@ function stubGrowthMonthlySubscription() {
   retrieveMock.mockResolvedValue({
     id: 'sub_live',
     items: { data: [{ id: 'si_base', quantity: 1, price: { lookup_key: 'growth_monthly' } }] },
+  } as unknown as Stripe.Subscription);
+}
+
+/** The same org a year on: a live Growth ANNUAL subscription on 8 seats. */
+const LIVE_ANNUAL_BILLING = { ...LIVE_BILLING, billing_period: 'annual' };
+
+function stubGrowthAnnualSubscription() {
+  retrieveMock.mockResolvedValue({
+    id: 'sub_live',
+    items: { data: [{ id: 'si_base', quantity: 1, price: { lookup_key: 'growth_annual' } }] },
   } as unknown as Stripe.Subscription);
 }
 
@@ -236,18 +247,22 @@ describe('POST /api/billing/plan/preview', () => {
     }
   });
 
-  it('reports a downgrade as credited to the next invoice, not charged today', async () => {
+  // Ruling R21 v2 removed the forced zero, so this case has to reach zero on its
+  // own arithmetic, and it does: a same-interval tier downgrade credits more
+  // unused Growth time than it charges for the rest of the period at Starter,
+  // and summarizePreviewInvoice floors the negative at zero. The route no longer
+  // has a thumb on this scale, which is what makes it worth asserting.
+  it('reports zero for a pure tier downgrade, whose prorations net out to a credit', async () => {
     const org = await withTestOrg({ billing: LIVE_BILLING });
     try {
       await promoteToOwner(org.organizationId, org.admin.userId);
       stubGrowthMonthlySubscription();
-      // Deliberately NOT zero: the apply route leaves a downgrade as
-      // create_prorations, so nothing is billed today whatever the preview says.
       previewMock.mockResolvedValue(
         previewInvoice({
-          amountDue: 6000,
+          amountDue: 3900,
           lines: [
-            { amount: 6000, when: 'now' },
+            { amount: -4950, when: 'now' },
+            { amount: 1950, when: 'now' },
             { amount: 3900, when: 'next' },
           ],
         }),
@@ -261,11 +276,95 @@ describe('POST /api/billing/plan/preview', () => {
 
       const data = res.body.data!;
       expect(data.direction).toBe('downgrade');
-      // Ruling R21: a downgrade is never worded, or priced, as a charge.
       expect(data.due_now_cents).toBe(0);
       expect(data.tax_cents).toBe(0);
       expect(data.recurring_cents).toBe(3900);
       expect(data.next_charge_at).toBe(new Date(NEXT_ATTEMPT * 1000).toISOString());
+      // And the screen says so in words, from that same zero.
+      expect(totalRowFor(data).label).toBe('Nothing is charged today');
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  // THE CASE RULING R21 v2 EXISTS FOR. Changing the interval resets the billing
+  // cycle, so the new monthly period is invoiced on the spot as a line starting
+  // at the proration date. Late in the annual term the credit for unused time is
+  // small, so real money is due, while directionOf still calls this a downgrade
+  // (the per-cycle price falls from $948 to $99). v1 forced that to zero and the
+  // purchase screen said "Nothing is charged today" over a live charge.
+  it('bills an annual to monthly switch today, and never calls it nothing', async () => {
+    const org = await withTestOrg({ billing: LIVE_ANNUAL_BILLING });
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      stubGrowthAnnualSubscription();
+      previewMock.mockResolvedValue(
+        previewInvoice({
+          amountDue: 8900,
+          lines: [
+            // A month left on the year: a small credit, netted against the new
+            // period's charge on the same invoice.
+            { amount: -1000, when: 'now' },
+            { amount: 9900, when: 'now' },
+          ],
+        }),
+      );
+
+      const res = await preview(org.admin.accessToken, org.organizationId, {
+        tier: 'growth',
+        period: 'monthly',
+        seat_count: 8,
+      });
+
+      const data = res.body.data!;
+      expect(data.direction).toBe('downgrade');
+      expect(data.due_now_cents).toBe(8900);
+      // No future-period line in this preview, so the catalogue prices the renewal.
+      expect(data.recurring_cents).toBe(9900);
+
+      // The copy this payload produces, end to end. A screen that says nothing is
+      // charged while Stripe invoices $89.00 is the whole bug.
+      const row = totalRowFor(data);
+      expect(row.label).toBe('Charged today');
+      expect(row.cents).toBe(8900);
+      const note = renewalNoteFor({ preview: data, period: 'monthly' });
+      expect(`${row.label} ${note}`.toLowerCase()).not.toContain('nothing is charged');
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  // The tax half of ruling R21 v2. v1 gated tax on the same forced zero, so a
+  // downgrade that IS billed today would have quoted a tax-inclusive total with
+  // its tax line reported as nothing.
+  it('quotes the tax inside a downgrade that is billed today', async () => {
+    vi.stubEnv('BILLING_TAX_ENABLED', 'true');
+    const org = await withTestOrg({ billing: LIVE_ANNUAL_BILLING });
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      stubGrowthAnnualSubscription();
+      previewMock.mockResolvedValue(
+        previewInvoice({
+          amountDue: 9612,
+          totalTaxes: [712],
+          lines: [
+            { amount: -1000, when: 'now', tax: -80 },
+            { amount: 9900, when: 'now', tax: 792 },
+          ],
+        }),
+      );
+
+      const res = await preview(org.admin.accessToken, org.organizationId, {
+        tier: 'growth',
+        period: 'monthly',
+        seat_count: 8,
+      });
+
+      const data = res.body.data!;
+      expect(data.direction).toBe('downgrade');
+      expect(data.due_now_cents).toBe(9612);
+      expect(data.tax_cents).toBe(712);
+      expect(data.tax_excluded).toBe(false);
     } finally {
       await org.cleanup();
     }
@@ -287,6 +386,8 @@ describe('POST /api/billing/plan/preview', () => {
       });
 
       expect(res.body.data!.direction).toBe('unchanged');
+      // Every line belongs to the next period, so the due-now bucket is empty
+      // without anything forcing it.
       expect(res.body.data!.due_now_cents).toBe(0);
     } finally {
       await org.cleanup();

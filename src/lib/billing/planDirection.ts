@@ -25,9 +25,12 @@ export interface PlanChangeTarget {
 }
 
 /**
- * Three words where shouldInvoiceNow needs one boolean. The UI splits its money
- * copy on this (ruling R21): an upgrade says "Charged today", a downgrade says
- * "Credited to your next invoice", a same-price change says neither.
+ * Three words where shouldInvoiceNow needs one boolean. This drives what Stripe
+ * is asked to do. It does NOT drive the money copy: ruling R21 v2 takes the
+ * purchase screen's headline label from the COMPUTED amount instead, because an
+ * annual to monthly switch reads as a downgrade here yet resets the billing
+ * cycle and really is billed today. Direction only supplies the sentence under
+ * the total (see totalRowFor in src/components/redesign/billing/planPickerModel.ts).
  */
 export type PlanChangeDirection = 'upgrade' | 'downgrade' | 'unchanged';
 

@@ -3,7 +3,7 @@
 // This split is not stylistic. There is no component-rendering test setup in
 // this repo, so anything that lives inside the .tsx is untested by
 // construction. The defaults that money hangs on (ruling R4's monthly period,
-// ruling R5's pre-selected tier, ruling R21's direction-driven total label,
+// ruling R5's pre-selected tier, ruling R21 v2's amount-driven total label,
 // ruling R11's cancel note) therefore live HERE, where a mutation test can
 // reach them. The component must call these rather than restate the rule.
 //
@@ -164,25 +164,24 @@ export function planLines(args: {
 
 export interface TotalRow {
   label: string
-  /** null means show no figure at all, not zero. */
-  cents: number | null
+  /** The figure the label describes. Always the preview's due-now amount. */
+  cents: number
 }
 
 /**
- * Ruling R21. The label is driven by the preview's own direction, because PR E
- * only invoices an upgrade immediately; a downgrade bills nothing now and lands
- * as credit. A blanket "Due today" is wrong half the time, and a wrong money
- * label at the confirm step is the exact surprise ruling R8 forbids.
+ * Ruling R21 v2. The label follows the COMPUTED AMOUNT, never the direction.
+ *
+ * v1 read the direction instead, which let the screen say "Nothing is charged
+ * today" over a real charge: an annual to monthly switch is classified as a
+ * downgrade (the per-cycle price falls) yet resets the billing cycle, so Stripe
+ * invoices the new period on the spot. Label and figure are derived from the
+ * SAME number here, so the pair cannot disagree whatever the payload says.
  */
 export function totalRowFor(preview: PlanPreviewPayload): TotalRow {
-  switch (preview.direction) {
-    case 'downgrade':
-      return { label: 'Credited to your next invoice', cents: preview.recurring_cents }
-    case 'unchanged':
-      return { label: 'Your bill does not change', cents: null }
-    default:
-      return { label: 'Charged today', cents: preview.due_now_cents }
-  }
+  // Clamped defensively: a negative figure under "Nothing is charged today"
+  // would be the same contradiction in the other direction.
+  const cents = Math.max(0, preview.due_now_cents)
+  return { label: cents > 0 ? 'Charged today' : 'Nothing is charged today', cents }
 }
 
 /**
@@ -198,13 +197,23 @@ export function renewalNoteFor(args: {
   // empty string is the single "no usable date" signal.
   const date = formatBillingDate(preview.next_charge_at)
   const amount = formatCents(preview.recurring_cents)
+  const cadence = period === 'annual' ? 'year' : 'month'
 
+  // Ruling R21 v2: direction may explain a downgrade, but the words "nothing is
+  // charged today" are only allowed to appear when the computed amount is zero.
   if (preview.direction === 'downgrade') {
+    if (preview.due_now_cents <= 0) {
+      return date
+        ? `Nothing is charged today. Your plan changes to this price on ${date}.`
+        : 'Nothing is charged today. Your plan changes to this price on your next invoice.'
+    }
+    // A downgrade with money due is the interval switch: the old plan's unused
+    // time is credited against today's charge rather than held back.
     return date
-      ? `Nothing is charged today. Your plan changes to this price on ${date}.`
-      : 'Nothing is charged today. Your plan changes to this price on your next invoice.'
+      ? `Your unused time is credited against today's amount. Then ${amount} on ${date}.`
+      : `Your unused time is credited against today's amount. Then ${amount} every ${cadence}.`
   }
-  return date ? `Then ${amount} on ${date}.` : `Then ${amount} every ${period === 'annual' ? 'year' : 'month'}.`
+  return date ? `Then ${amount} on ${date}.` : `Then ${amount} every ${cadence}.`
 }
 
 /** Ruling R11. It would be misleading on an annual commitment. */
@@ -225,9 +234,14 @@ export function taxNoteFor(preview: PlanPreviewPayload): string | null {
  * An upgrade on a live subscription is charged a PART period, so the total will
  * not match the itemised full-period lines above it. Say why, or the mismatch
  * reads as a bug in our arithmetic.
+ *
+ * Withheld when the computed amount is zero (a credit balance swallowed the
+ * proration): there is no "today's amount" to explain, and ruling R21 v2 does
+ * not let a sentence talk about a charge the figure says is not happening.
  */
 export function prorationNoteFor(preview: PlanPreviewPayload): string | null {
   if (preview.direction !== 'upgrade' || preview.is_new_subscription) return null
+  if (preview.due_now_cents <= 0) return null
   return "Today's amount covers the rest of your current billing period."
 }
 

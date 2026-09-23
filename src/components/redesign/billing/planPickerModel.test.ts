@@ -273,35 +273,102 @@ describe('planLines', () => {
 })
 
 describe('totalRowFor', () => {
-  // Ruling R21. One blanket "Due today" is wrong half the time.
+  // Ruling R21 v2: the label follows the COMPUTED AMOUNT, never the direction.
   it('labels an upgrade as charged today, using the due-now figure', () => {
     const row = totalRowFor(preview({ direction: 'upgrade', due_now_cents: 3780, recurring_cents: 9900 }))
     expect(row.label).toBe('Charged today')
     expect(row.cents).toBe(3780)
   })
 
-  it('labels a downgrade as a credit and shows the new recurring figure, never a today figure', () => {
+  it('says nothing is charged today on a pure downgrade, which really is zero', () => {
     const row = totalRowFor(preview({ direction: 'downgrade', due_now_cents: 0, recurring_cents: 3900 }))
-    expect(row.label).toBe('Credited to your next invoice')
-    expect(row.cents).toBe(3900)
+    expect(row.label).toBe('Nothing is charged today')
+    expect(row.cents).toBe(0)
   })
 
-  it('shows no amount at all when nothing changes', () => {
+  // THE BUG R21 v2 exists to kill. An annual to monthly switch is classified as
+  // a downgrade (the per-cycle price falls) but resets the billing cycle, so
+  // Stripe invoices the new month on the spot. v1 read the direction and printed
+  // "Nothing is charged today" over that charge.
+  it('says charged today on a downgrade that the preview prices above zero', () => {
+    const row = totalRowFor(preview({ direction: 'downgrade', due_now_cents: 8900, recurring_cents: 9900 }))
+    expect(row.label).toBe('Charged today')
+    expect(row.cents).toBe(8900)
+  })
+
+  // The mirror case: an upgrade whose proration is swallowed by an existing
+  // credit balance. Trusting the direction would have said "Charged today $0.00".
+  it('says nothing is charged today on an upgrade a credit balance covers', () => {
+    const row = totalRowFor(preview({ direction: 'upgrade', due_now_cents: 0, recurring_cents: 18252 }))
+    expect(row.label).toBe('Nothing is charged today')
+    expect(row.cents).toBe(0)
+  })
+
+  it('shows the zero rather than hiding the figure when nothing changes', () => {
     const row = totalRowFor(preview({ direction: 'unchanged', due_now_cents: 0, recurring_cents: 9900 }))
-    expect(row.label).toBe('Your bill does not change')
-    expect(row.cents).toBeNull()
+    expect(row.label).toBe('Nothing is charged today')
+    expect(row.cents).toBe(0)
   })
 
-  it('gives each direction a distinct label', () => {
-    const labels = (['upgrade', 'downgrade', 'unchanged'] as const).map(
-      (direction) => totalRowFor(preview({ direction })).label,
-    )
-    expect(new Set(labels).size).toBe(3)
+  // Strengthening: a constant label, or a figure taken from anything but
+  // due_now_cents, dies here. This is the invariant, stated once.
+  it('says charged today exactly when the figure is above zero, at every direction', () => {
+    for (const direction of ['upgrade', 'downgrade', 'unchanged'] as const) {
+      for (const due_now_cents of [0, 1, 99, 3780, 8900, 92325]) {
+        const row = totalRowFor(preview({ direction, due_now_cents, recurring_cents: 9900 }))
+        const where = `${direction} ${due_now_cents}`
+        expect(row.cents, where).toBe(due_now_cents)
+        expect(row.label, where).toBe(
+          due_now_cents > 0 ? 'Charged today' : 'Nothing is charged today',
+        )
+      }
+    }
   })
 
-  it('never says due or charged today on a downgrade', () => {
-    const row = totalRowFor(preview({ direction: 'downgrade' }))
-    expect(row.label.toLowerCase()).not.toContain('today')
+  // A negative figure under "Nothing is charged today" is the same contradiction
+  // in the other direction. The endpoint floors at zero; this is the backstop.
+  it('never renders a negative total', () => {
+    const row = totalRowFor(preview({ direction: 'downgrade', due_now_cents: -2500 }))
+    expect(row.cents).toBe(0)
+    expect(row.label).toBe('Nothing is charged today')
+  })
+})
+
+// The whole point of ruling R21 v2, across every string the total block draws.
+describe('the copy can never contradict the figure (ruling R21 v2)', () => {
+  const NOTHING = 'nothing is charged'
+
+  it('never says nothing is charged today while the amount is above zero', () => {
+    for (const direction of ['upgrade', 'downgrade', 'unchanged'] as const) {
+      for (const due_now_cents of [1, 2500, 8900, 92325]) {
+        for (const period of ['monthly', 'annual'] as BillingPeriod[]) {
+          for (const next_charge_at of [null, '2026-10-21T00:00:00.000Z']) {
+            for (const is_new_subscription of [false, true]) {
+              const p = preview({ direction, due_now_cents, next_charge_at, is_new_subscription })
+              const row = totalRowFor(p)
+              const copy = [
+                row.label,
+                renewalNoteFor({ preview: p, period }),
+                prorationNoteFor(p) ?? '',
+                taxNoteFor(p) ?? '',
+              ].join(' ')
+              const where = `${direction} ${due_now_cents} ${period} ${next_charge_at}`
+              expect(row.cents, where).toBeGreaterThan(0)
+              expect(copy.toLowerCase(), where).not.toContain(NOTHING)
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('says it plainly, in both places, when the amount really is zero', () => {
+    for (const direction of ['upgrade', 'downgrade', 'unchanged'] as const) {
+      const p = preview({ direction, due_now_cents: 0 })
+      expect(totalRowFor(p).label, direction).toBe('Nothing is charged today')
+      // The supporting sentence never claims a charge that is not happening.
+      expect(prorationNoteFor(p), direction).toBeNull()
+    }
   })
 })
 
@@ -315,13 +382,35 @@ describe('renewalNoteFor', () => {
     ).toBe('Then $99.00 on October 21, 2026.')
   })
 
-  it('says nothing is charged today on a downgrade, with the date it takes effect', () => {
+  it('says nothing is charged today on a downgrade that costs nothing today', () => {
     expect(
       renewalNoteFor({
-        preview: preview({ direction: 'downgrade', recurring_cents: 3900 }),
+        preview: preview({ direction: 'downgrade', due_now_cents: 0, recurring_cents: 3900 }),
         period: 'monthly',
       }),
     ).toBe('Nothing is charged today. Your plan changes to this price on October 21, 2026.')
+  })
+
+  // Ruling R21 v2: direction still explains the credit, but it may not claim
+  // nothing is charged when the annual to monthly switch really is billed today.
+  it('explains the credit instead of denying the charge on a billed downgrade', () => {
+    expect(
+      renewalNoteFor({
+        preview: preview({ direction: 'downgrade', due_now_cents: 8900, recurring_cents: 9900 }),
+        period: 'monthly',
+      }),
+    ).toBe("Your unused time is credited against today's amount. Then $99.00 on October 21, 2026.")
+    expect(
+      renewalNoteFor({
+        preview: preview({
+          direction: 'downgrade',
+          due_now_cents: 8900,
+          recurring_cents: 9900,
+          next_charge_at: null,
+        }),
+        period: 'monthly',
+      }),
+    ).toBe("Your unused time is credited against today's amount. Then $99.00 every month.")
   })
 
   it('falls back to the cadence when Stripe supplied no date', () => {
@@ -341,13 +430,16 @@ describe('renewalNoteFor', () => {
 
   it('never renders an empty date', () => {
     for (const direction of ['upgrade', 'downgrade', 'unchanged'] as const) {
-      for (const next_charge_at of [null, 'not-a-date']) {
-        const note = renewalNoteFor({
-          preview: preview({ direction, next_charge_at }),
-          period: 'monthly',
-        })
-        expect(note, `${direction} ${next_charge_at}`).not.toContain(' on .')
-        expect(note).not.toContain('  ')
+      for (const due_now_cents of [0, 8900]) {
+        for (const next_charge_at of [null, 'not-a-date']) {
+          const note = renewalNoteFor({
+            preview: preview({ direction, due_now_cents, next_charge_at }),
+            period: 'monthly',
+          })
+          const where = `${direction} ${due_now_cents} ${next_charge_at}`
+          expect(note, where).not.toContain(' on .')
+          expect(note, where).not.toContain('  ')
+        }
       }
     }
   })
@@ -384,6 +476,13 @@ describe('prorationNoteFor', () => {
     expect(prorationNoteFor(preview({ direction: 'downgrade' }))).toBeNull()
     expect(prorationNoteFor(preview({ direction: 'unchanged' }))).toBeNull()
   })
+  // Ruling R21 v2: there is no "today's amount" to explain when the figure is
+  // zero, and a sentence about a charge would contradict the total above it.
+  it('says nothing when a credit balance leaves zero due today', () => {
+    expect(
+      prorationNoteFor(preview({ direction: 'upgrade', is_new_subscription: false, due_now_cents: 0 })),
+    ).toBeNull()
+  })
 })
 
 describe('seat copy', () => {
@@ -416,10 +515,12 @@ describe('no em dash anywhere in this component model', () => {
       }
       for (const direction of ['upgrade', 'downgrade', 'unchanged'] as const) {
         for (const next_charge_at of [null, '2026-10-21T00:00:00.000Z']) {
-          const p = preview({ direction, next_charge_at })
-          strings.push(totalRowFor(p).label)
-          strings.push(renewalNoteFor({ preview: p, period }) ?? '')
-          strings.push(taxNoteFor(p) ?? '', prorationNoteFor(p) ?? '')
+          for (const due_now_cents of [0, 8900]) {
+            const p = preview({ direction, next_charge_at, due_now_cents })
+            strings.push(totalRowFor(p).label)
+            strings.push(renewalNoteFor({ preview: p, period }) ?? '')
+            strings.push(taxNoteFor(p) ?? '', prorationNoteFor(p) ?? '')
+          }
         }
       }
     }
@@ -467,11 +568,24 @@ describe('PlanPicker delegates its money rules to this model', () => {
     expect(source).toMatch(/max=\{seatRange\.max\}/)
   })
 
-  it('takes the total label from the preview direction, never a literal (ruling R21)', () => {
+  it('takes the total label from the model, never a literal (ruling R21 v2)', () => {
     expect(source).toContain('totalRowFor')
-    for (const literal of ['Due today', 'Charged today', 'Credited to your next invoice']) {
+    for (const literal of [
+      'Due today',
+      'Charged today',
+      'Nothing is charged today',
+      'Credited to your next invoice',
+    ]) {
       expect(source, literal).not.toContain(literal)
     }
+  })
+
+  // The figure beside the label must be the label's own number, not a second
+  // one the view picked. One read of total.cents per place a total is drawn.
+  it('draws the total figure from total.cents alone (ruling R21 v2)', () => {
+    expect(source).toContain('formatCents(total.cents)')
+    expect(source).not.toContain('formatCents(preview.due_now_cents)')
+    expect(source).not.toContain('formatCents(preview.recurring_cents)')
   })
 
   it('never hardcodes a billing period, so ruling R4 cannot be reverted in the view', () => {

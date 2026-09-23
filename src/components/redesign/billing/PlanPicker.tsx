@@ -163,11 +163,11 @@ export function PlanPicker({
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="text-sm font-bold text-foreground">{total.label}</span>
-        {total.cents !== null ? (
-          <span className="text-3xl font-bold tabular-nums text-foreground">
-            {formatCents(total.cents)}
-          </span>
-        ) : null}
+        {/* Label and figure come from the same number (ruling R21 v2), so this
+            pair cannot say "nothing" over a real charge. */}
+        <span className="text-3xl font-bold tabular-nums text-foreground">
+          {formatCents(total.cents)}
+        </span>
       </div>
       <p className="text-xs text-muted-foreground">{renewalNoteFor({ preview, period })}</p>
       {prorationNoteFor(preview) ? (
@@ -193,7 +193,7 @@ export function PlanPicker({
       {showPriceError
         ? PRICE_ERROR
         : total && preview
-          ? `${total.label}${total.cents !== null ? ` ${formatCents(total.cents)}` : ''}`
+          ? `${total.label} ${formatCents(total.cents)}`
           : 'Pricing your selection'}
     </p>
   )
@@ -355,11 +355,9 @@ export function PlanPicker({
             ) : total && preview ? (
               <>
                 <p className="truncate text-xs text-muted-foreground">{total.label}</p>
-                {total.cents !== null ? (
-                  <p className="text-xl font-bold tabular-nums text-foreground">
-                    {formatCents(total.cents)}
-                  </p>
-                ) : null}
+                <p className="text-xl font-bold tabular-nums text-foreground">
+                  {formatCents(total.cents)}
+                </p>
               </>
             ) : (
               <div className="space-y-1" aria-hidden>
