@@ -1276,6 +1276,8 @@ One hook every billing surface reads from. Nothing below this task talks to `fet
     billing: OrgBillingRow | null
     seatsInUse: number
     role: 'owner' | 'admin' | 'manager' | null
+    /** ISO renewal date, or null on a trial. Sibling of `billing`, not inside it. */
+    currentPeriodEnd: string | null
     isOwner: boolean
     canSeeBillingChrome: boolean   // owner or admin (R15)
     uiEnabled: boolean             // billingEnforcementUiEnabled()
