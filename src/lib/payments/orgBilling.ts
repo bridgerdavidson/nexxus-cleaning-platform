@@ -18,6 +18,7 @@ import {
 } from '@/lib/stripe/billing';
 import { requireAppUrl } from '@/lib/billing/appUrl';
 import { billingTaxEnabled } from '@/lib/billing/flags';
+import { portalVariantForRole } from '@/lib/billing/portalConfigurations';
 import { PLANS, lookupKeyFor, seatLookupKeyFor } from '@/lib/billing/plans';
 import type { PlanSelection } from '@/lib/billing/planSelection';
 
@@ -94,21 +95,31 @@ export async function getOrCreateOrgCustomer(
 /**
  * A Customer Portal link for the org's billing Customer.
  *
- * The session is always created against OUR portal configuration (the one
- * scripts/stripe-billing-setup.ts tags `nexxus_portal=default`). That is the
- * only thing that turns plan changes off inside the portal, which the spec
- * requires because plan changes belong in the app, and the only thing that turns
- * the cancellation-reason survey on. Falling back to the Stripe account default
- * would quietly enforce neither, so resolvePortalConfiguration() throwing on a
- * half-configured account is the intended outcome.
+ * The session is always created against one of OUR portal configurations (the
+ * two scripts/stripe-billing-setup.ts tags `nexxus_portal=default` and
+ * `nexxus_portal=remediation`). That is the only thing that turns plan changes
+ * off inside the portal, which the spec requires because plan changes belong in
+ * the app, and the only thing that turns the cancellation-reason survey on.
+ * Falling back to the Stripe account default would quietly enforce neither, so
+ * resolvePortalConfiguration() throwing on a half-configured account is the
+ * intended outcome.
+ *
+ * WHICH configuration is decided by `role`, and `role` must be the one the
+ * server resolved from `organization_members` (requireOrgAuth's `auth.role`).
+ * Ruling R24: an owner gets the full portal including cancellation, an admin
+ * gets the remediation portal, which can fix a card and read invoices but
+ * cannot end the agreement. Taking the ROLE rather than a variant is
+ * deliberate: there is then no parameter a caller could forward from a request,
+ * and the owner portal has exactly one way to be reached.
  */
 export async function getOrgPortalLink(
   supabase: SupabaseClient,
   organizationId: string,
   returnUrl: string,
+  role: string,
 ): Promise<string> {
   const customerId = await getOrCreateOrgCustomer(supabase, organizationId);
-  const configuration = await resolvePortalConfiguration();
+  const configuration = await resolvePortalConfiguration(portalVariantForRole(role));
   const session = await createBillingPortalSession({ customerId, returnUrl, configuration });
   return session.url;
 }

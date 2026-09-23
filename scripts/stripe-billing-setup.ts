@@ -15,13 +15,18 @@
  *     in the app stores a price id, so test and live differ only in which account
  *     the key points at. Annual Prices are ONE upfront charge per year, so their
  *     unit_amount is twelve times the per-month display figure.
- *   - ONE Customer Portal configuration tagged metadata.nexxus_portal = 'default',
- *     which resolvePortalConfiguration() looks up by that tag.
+ *   - TWO Customer Portal configurations, tagged metadata.nexxus_portal =
+ *     'default' (the OWNER portal, cancellation enabled) and 'remediation' (the
+ *     ADMIN portal: card and invoices only, no cancel, no plan change).
+ *     resolvePortalConfiguration(variant) looks each one up by that tag, and
+ *     getOrgPortalLink picks the variant from the caller's server-side org role.
+ *     Ruling R24; the payloads are in src/lib/billing/portalConfigurations.ts,
+ *     where they are unit tested.
  *
  * Idempotent and never destructive. It looks Products up by metadata.nexxus_plan,
- * Prices by lookup key, and the portal configuration by its metadata tag, creates
+ * Prices by lookup key, and each portal configuration by its metadata tag, creates
  * only what is missing, and never deletes, archives, or edits anything that is
- * already there. Running it twice reports thirteen objects found and creates none.
+ * already there. Running it twice reports fourteen objects found and creates none.
  *
  * TO CHANGE A PRICE LATER: Stripe Prices are immutable, so a new amount means a
  * NEW Price. Two rules, and the second is the one that bites:
@@ -64,6 +69,10 @@ import {
   type LookupKey,
   type PlanTier,
 } from '@/lib/billing/plans';
+import {
+  PORTAL_CONFIGURATIONS,
+  PORTAL_VARIANTS,
+} from '@/lib/billing/portalConfigurations';
 
 /** The metadata value that identifies the extra-seat Product. Tiers use their own key. */
 const SEAT_PLAN_KEY = 'extra_seat';
@@ -201,51 +210,47 @@ async function ensurePrice(
 // ---------------------------------------------------------------------------
 
 /**
- * The portal is for invoices, the card on file, and cancelling. Plan and seat
- * changes are deliberately NOT in it: those run through the app, which enforces
- * the seat bounds and the seats-in-use floor that Stripe knows nothing about.
+ * Both portals, one list call, then create only what is missing.
+ *
+ * The owner portal is for invoices, the card on file, and cancelling. The admin
+ * portal is the same minus cancelling (ruling R24). Plan and seat changes are
+ * deliberately in NEITHER: those run through the app, which enforces the seat
+ * bounds and the seats-in-use floor that Stripe knows nothing about.
  *
  * Tax ID collection stays off until Stripe Tax is switched on.
+ *
+ * Lists once and matches on the metadata tag, same discipline as
+ * findProductByPlanKey: a per-variant lookup after a create would be a second
+ * round trip against an index that can lag its own write, and the whole point of
+ * this function is that a re-run creates nothing.
  */
-async function ensurePortalConfiguration(stripe: Stripe): Promise<void> {
+async function ensurePortalConfigurations(stripe: Stripe): Promise<void> {
+  const existing = new Map<string, Stripe.BillingPortal.Configuration>();
   for await (const config of stripe.billingPortal.configurations.list({ limit: 100 })) {
-    if (config.metadata?.nexxus_portal === 'default') {
-      record('Portal config', 'nexxus_portal=default', config.id, 'found');
-      return;
-    }
+    const tag = config.metadata?.nexxus_portal;
+    // First match wins, so a duplicate created by hand cannot displace ours.
+    if (tag && !existing.has(tag)) existing.set(tag, config);
   }
 
-  const created = await stripe.billingPortal.configurations.create({
-    business_profile: {
-      headline: 'Manage your Nexxus subscription',
-    },
-    features: {
-      invoice_history: { enabled: true },
-      payment_method_update: { enabled: true },
-      customer_update: { enabled: true, allowed_updates: ['email', 'address', 'name'] },
-      subscription_cancel: {
-        enabled: true,
-        mode: 'at_period_end',
-        cancellation_reason: {
-          enabled: true,
-          options: [
-            'too_expensive',
-            'missing_features',
-            'switched_service',
-            'unused',
-            'customer_service',
-            'too_complex',
-            'low_quality',
-            'other',
-          ],
-        },
-      },
-      // Plan changes happen in the app, not here.
-      subscription_update: { enabled: false },
-    },
-    metadata: { nexxus_portal: 'default', source: 'nexxus-cleaning-platform' },
-  });
-  record('Portal config', 'nexxus_portal=default', created.id, 'created');
+  for (const variant of PORTAL_VARIANTS) {
+    const label = `nexxus_portal=${variant}`;
+    const found = existing.get(variant);
+
+    if (found) {
+      if (!found.active) {
+        warnings.push(
+          `Portal configuration ${found.id} (${label}) is INACTIVE. Nothing was changed, but a ` +
+            'portal session cannot be created against it, so that role gets an error instead of ' +
+            'a portal. Reactivate it in the Dashboard.',
+        );
+      }
+      record('Portal config', label, found.id, 'found');
+      continue;
+    }
+
+    const created = await stripe.billingPortal.configurations.create(PORTAL_CONFIGURATIONS[variant]);
+    record('Portal config', label, created.id, 'created');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +355,7 @@ async function main(): Promise<void> {
     throw new Error(`This script did not set up every lookup key in plans.ts: ${missing.join(', ')}`);
   }
 
-  await ensurePortalConfiguration(stripe);
+  await ensurePortalConfigurations(stripe);
 
   printReport();
 

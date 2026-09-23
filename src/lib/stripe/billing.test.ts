@@ -89,19 +89,64 @@ describe('resolvePrices', () => {
 describe('resolvePortalConfiguration', () => {
   beforeEach(() => { __resetBillingCaches(); configurationsList.mockReset(); });
 
-  it('picks the one tagged default', async () => {
-    configurationsList.mockResolvedValue({
-      data: [
-        { id: 'bpc_other', metadata: {} },
-        { id: 'bpc_ours', metadata: { nexxus_portal: 'default' } },
-      ],
-    });
-    expect(await resolvePortalConfiguration()).toBe('bpc_ours');
+  const bothTagged = () => ({
+    data: [
+      { id: 'bpc_other', metadata: {} },
+      { id: 'bpc_owner', metadata: { nexxus_portal: 'default' } },
+      { id: 'bpc_admin', metadata: { nexxus_portal: 'remediation' } },
+    ],
   });
 
-  it('throws when none is tagged', async () => {
+  // Mutation target (ruling R24): "resolve the default configuration whatever
+  // the variant". That hands an admin sent to fix a card the owner portal, with
+  // its Cancel subscription button.
+  it('resolves each variant to its own configuration', async () => {
+    configurationsList.mockResolvedValue(bothTagged());
+    expect(await resolvePortalConfiguration('default')).toBe('bpc_owner');
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
+  });
+
+  it('caches per variant, so one variant cannot answer for the other', async () => {
+    configurationsList.mockResolvedValue(bothTagged());
+    await resolvePortalConfiguration('default');
+    await resolvePortalConfiguration('default');
+    expect(configurationsList).toHaveBeenCalledTimes(1);
+
+    // A warmed cache for one variant must not short-circuit the other.
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
+    expect(configurationsList).toHaveBeenCalledTimes(2);
+    await resolvePortalConfiguration('remediation');
+    expect(configurationsList).toHaveBeenCalledTimes(2);
+  });
+
+  // Fails the way resolvePrices does: name the missing tag, point at the script.
+  it('throws naming the missing tag, for either variant', async () => {
     configurationsList.mockResolvedValue({ data: [{ id: 'bpc_other', metadata: {} }] });
-    await expect(resolvePortalConfiguration()).rejects.toThrow(/stripe-billing-setup/);
+    await expect(resolvePortalConfiguration('default')).rejects.toThrow(/nexxus_portal=default/);
+    await expect(resolvePortalConfiguration('default')).rejects.toThrow(/stripe-billing-setup/);
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(
+      /nexxus_portal=remediation/,
+    );
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(/stripe-billing-setup/);
+  });
+
+  // An account set up before R24 has the owner portal and not the admin one.
+  // Half-configured must fail loudly rather than fall back to the one that can
+  // cancel, so the operator runs the script instead of shipping the hole.
+  it('never falls back to the other variant when only one is configured', async () => {
+    configurationsList.mockResolvedValue({
+      data: [{ id: 'bpc_owner', metadata: { nexxus_portal: 'default' } }],
+    });
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(
+      /nexxus_portal=remediation/,
+    );
+  });
+
+  it('does not cache a failure', async () => {
+    configurationsList.mockResolvedValueOnce({ data: [] });
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow();
+    configurationsList.mockResolvedValueOnce(bothTagged());
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
   });
 });
 

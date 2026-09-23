@@ -98,6 +98,18 @@ export interface BillingSectionInput {
   uiEnabled: boolean
   isLoading: boolean
   access: BillingAccess | null
+  /**
+   * useBilling().canSeeBillingChrome: owner or admin. Ruling R15 draws the line
+   * between owner and admin, and `actionStateFor` reads only `isOwner`, so
+   * without this the model cannot tell an admin from a MANAGER: both are
+   * non-owners, and both would be handed a live portal button.
+   *
+   * Today the nav registry keeps managers out of this section, so it is
+   * unreachable rather than wrong. But /api/billing/state permits a manager, so
+   * the section is one registry change away from rendering for one. This is the
+   * defence in depth that makes that change safe.
+   */
+  canSeeBillingChrome: boolean
   seatsInUse: number
   /** organizations.plan_tier, already narrowed. Null on a trial. */
   tier: PlanTier | null
@@ -377,7 +389,23 @@ export function billingSectionView(input: BillingSectionInput): BillingSectionVi
   // access is null while the read is in flight AND when the read failed (a 403
   // leaves `data` undefined). Never an empty card, never a crash.
   if (!input.access) return { kind: 'unavailable', message: BILLING_UNAVAILABLE_MESSAGE }
-  return { kind: 'plan', spec: specFor(input, input.access) }
+
+  const spec = specFor(input, input.access)
+
+  // A viewer who is not owner or admin keeps the card and loses every control,
+  // exactly as billingBannersModel returns null for them. Not "disabled with a
+  // reason": ruling R15 v4 draws that distinction between the OWNER and the
+  // ADMIN, both of whom this section is for. A manager is not its audience at
+  // all, so it explains what the company is on and offers nothing to click.
+  //
+  // pickerSubmitLabel goes with the actions. It is the only handle on
+  // PlanPicker, and leaving it set would mount a live plan picker for a role
+  // that has no button to open one, which is worse than either answer.
+  if (!input.canSeeBillingChrome) {
+    return { kind: 'plan', spec: { ...spec, actions: [], pickerSubmitLabel: null } }
+  }
+
+  return { kind: 'plan', spec }
 }
 
 export interface ActionState {
@@ -392,6 +420,12 @@ export interface ActionState {
  * and asks the owner nothing. A remediation action (`ownerOnly: false`) is
  * live for both roles, which is what keeps this surface and the shell banner
  * from answering the same question two different ways.
+ *
+ * `isOwner` alone cannot tell an admin from a manager, and deliberately does
+ * not have to: billingSectionView strips the whole action list for a viewer
+ * without `canSeeBillingChrome`, so nothing this function is ever called with
+ * belongs to a manager. Keep that gate there rather than duplicating a second
+ * role rule here; one capability, one answer.
  */
 export function actionStateFor(action: BillingSectionAction, isOwner: boolean): ActionState {
   if (action.ownerOnly && !isOwner) return { disabled: true, reason: OWNER_ONLY_REASON }

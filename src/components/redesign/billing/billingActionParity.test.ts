@@ -132,10 +132,22 @@ function settingsReachableBy(role: Role): boolean {
 
 function settingsEnabledActions(access: BillingAccess, role: Role, r: OrgBillingRow): BillingSectionAction[] {
   if (!settingsReachableBy(role)) return []
+  return settingsModelActions(access, role, r)
+}
+
+/**
+ * The same thing WITHOUT the registry gate: what the model alone would hand
+ * this role if the section rendered for them. Ruling R24 moved the manager
+ * answer out of the nav registry and into the model, so this is the function
+ * that proves a registry change could not reopen the hole.
+ */
+function settingsModelActions(access: BillingAccess, role: Role, r: OrgBillingRow): BillingSectionAction[] {
   const view = billingSectionView({
     uiEnabled: true,
     isLoading: false,
     access,
+    // Exactly what useBilling derives, same as the banner above.
+    canSeeBillingChrome: role === 'owner' || role === 'admin',
     seatsInUse: 4,
     tier: 'growth',
     period: 'monthly',
@@ -230,6 +242,7 @@ describe('one capability, one answer: portal access across the banner and Settin
         uiEnabled: true,
         isLoading: false,
         access,
+        canSeeBillingChrome: true,
         seatsInUse: 4,
         tier: 'growth',
         period: 'monthly',
@@ -269,6 +282,10 @@ describe('one capability, one answer: portal access across the banner and Settin
       const access = deriveBillingAccess(r, NOW)
       expect(bannerEnabledActions(access, 'manager', r.billing_pause_resumes_at), `banner/${label}`).toEqual([])
       expect(settingsEnabledActions(access, 'manager', r), `settings/${label}`).toEqual([])
+      // Ruling R24: and not merely because the registry hides the section.
+      // Mutation target: "add manager to the billing section's roles", which
+      // used to be all it took to hand a manager a live portal button.
+      expect(settingsModelActions(access, 'manager', r), `settings model/${label}`).toEqual([])
 
       const spec = billingBanner({
         uiEnabled: true,

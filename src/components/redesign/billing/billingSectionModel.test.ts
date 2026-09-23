@@ -50,6 +50,8 @@ function input(over: Partial<BillingSectionInput> = {}): BillingSectionInput {
     uiEnabled: true,
     isLoading: false,
     access: access(),
+    // Owner or admin. The manager case has its own describe block below.
+    canSeeBillingChrome: true,
     seatsInUse: 6,
     tier: 'growth',
     period: 'monthly',
@@ -408,6 +410,73 @@ describe('actionStateFor', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Ruling R24: a viewer who is not owner or admin.
+//
+// actionStateFor sees only `isOwner`, so an admin and a MANAGER look identical
+// to it: both are non-owners, and both would be handed a live portal button.
+// Today the nav registry keeps managers out of this section, so the hole is
+// unreachable rather than open, but /api/billing/state permits a manager and
+// the registry is one edit away. canSeeBillingChrome is the defence in depth.
+// ---------------------------------------------------------------------------
+
+describe('canSeeBillingChrome', () => {
+  // Mutation target: "ignore canSeeBillingChrome and return the spec as is",
+  // which is the state this file was written against. Every portal action is
+  // ownerOnly: false, so every one of them comes back LIVE for a manager.
+  it('gives a viewer without billing chrome no action at all, in every state', () => {
+    let stripped = 0
+    for (const state of ALL_STATES) {
+      const asManager = billingSectionView(
+        input({ access: ACCESS_FOR[state], canSeeBillingChrome: false }),
+      )
+      expect(asManager.kind, state).toBe('plan')
+      if (asManager.kind !== 'plan') continue
+
+      expect(asManager.spec.actions, state).toEqual([])
+      // The picker is the only other live control, and its label is the only
+      // handle on it. It goes with the actions.
+      expect(asManager.spec.pickerSubmitLabel, state).toBeNull()
+
+      if (specFor({ access: ACCESS_FOR[state] }).actions.length > 0) stripped += 1
+    }
+    // Guards against the loop passing because no state has actions anyway.
+    expect(stripped, 'no state had actions to strip').toBeGreaterThanOrEqual(6)
+  })
+
+  // Mutation target: "hide the whole section from a manager". A manager who
+  // cannot create a booking must still be able to see WHY, which is the same
+  // reason billingBannersModel keeps the frozen explanation for them.
+  it('still explains what the company is on, card and all', () => {
+    for (const state of ALL_STATES) {
+      const asManager = billingSectionView(
+        input({ access: ACCESS_FOR[state], canSeeBillingChrome: false }),
+      )
+      const asOwner = billingSectionView(input({ access: ACCESS_FOR[state] }))
+      expect(asManager.kind, state).toBe('plan')
+      if (asManager.kind !== 'plan' || asOwner.kind !== 'plan') continue
+
+      expect(asManager.spec.lead, state).toBe(asOwner.spec.lead)
+      expect(asManager.spec.card, state).toEqual(asOwner.spec.card)
+      expect(asManager.spec.notice, state).toEqual(asOwner.spec.notice)
+    }
+  })
+
+  // The flag and the loading/unavailable gates still come first: a manager
+  // must not see a plan card before ops has flipped the UI flag.
+  it('does not outrank the gates in front of it', () => {
+    expect(
+      billingSectionView(input({ uiEnabled: false, canSeeBillingChrome: false })).kind,
+    ).toBe('disabled')
+    expect(billingSectionView(input({ isLoading: true, canSeeBillingChrome: false })).kind).toBe(
+      'loading',
+    )
+    expect(billingSectionView(input({ access: null, canSeeBillingChrome: false })).kind).toBe(
+      'unavailable',
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Cross-cutting invariants over every reachable billing row
 // ---------------------------------------------------------------------------
 
@@ -534,10 +603,21 @@ describe('BillingSection wiring', () => {
     for (const field of [
       'uiEnabled', 'isLoading', 'access', 'seatsInUse', 'tier', 'period',
       'seatCount', 'currentPeriodEnd', 'cancelAt', 'pauseResumesAt',
+      // Ruling R24: without this the model cannot tell an admin from a
+      // manager, and a manager renders a live portal button.
+      'canSeeBillingChrome',
     ]) {
       expect(call, field).toContain(field)
     }
-    expect(call).not.toMatch(/(uiEnabled|isLoading):\s*(true|false)/)
+    expect(call).not.toMatch(/(uiEnabled|isLoading|canSeeBillingChrome):\s*(true|false)/)
+  })
+
+  // Mutation target: "hand-roll the audience", e.g. role !== 'manager'. It is
+  // derived once, in useBilling, and the shell banner reads the same field.
+  it('reads canSeeBillingChrome from useBilling, not a hand-rolled role check', () => {
+    expect(clean).toMatch(/useBilling\(\)/)
+    expect(clean).toContain('canSeeBillingChrome')
+    expect(clean).not.toMatch(/role\s*[!=]==?\s*['"]/)
   })
 
   // Mutation target: "read currentPeriodEnd off the billing row". It is a

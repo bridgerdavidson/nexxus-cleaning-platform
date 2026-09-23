@@ -49,7 +49,8 @@ const PORTAL_ERROR = "Could not open the billing portal. Please try again.";
 const PLAN_UPDATED = "Your plan is updated";
 
 export function BillingSection() {
-  const { access, billing, seatsInUse, currentPeriodEnd, isOwner, uiEnabled, isLoading } = useBilling();
+  const { access, billing, seatsInUse, currentPeriodEnd, isOwner, canSeeBillingChrome, uiEnabled, isLoading } =
+    useBilling();
   const { currentOrganizationId } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -60,6 +61,9 @@ export function BillingSection() {
 
   const view = billingSectionView({
     uiEnabled,
+    // Owner or admin. Without it the model cannot tell an admin from a manager
+    // and would hand a manager a live portal button (ruling R24).
+    canSeeBillingChrome,
     // The org id arrives after auth bootstrap, and useOrgQuery stays DISABLED
     // until it does, which reports isLoading false with no data. Without this
     // the section would flash "could not load your plan details" on every cold

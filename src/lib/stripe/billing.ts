@@ -10,6 +10,7 @@
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 import { LOOKUP_KEYS, type LookupKey } from '@/lib/billing/plans';
+import type { PortalVariant } from '@/lib/billing/portalConfigurations';
 
 export async function createStripeBillingCustomer(params: {
   organizationId: string;
@@ -38,12 +39,13 @@ export async function cancelStripeSubscription(subscriptionId: string): Promise<
  *
  * `configuration` is what makes the portal behave the way the spec requires:
  * plan changes are turned OFF there (they belong in the app, where the seat
- * rules live) and the cancellation-reason survey is turned on. Without it Stripe
- * falls back to the account default configuration, which enforces neither, and
+ * rules live), the cancellation-reason survey is turned on, and on the admin
+ * variant cancellation itself is off (ruling R24). Without it Stripe falls back
+ * to the account default configuration, which enforces none of that, and
  * nothing about the session looks wrong from our side. It is REQUIRED rather
  * than optional for exactly that reason: get it from
- * resolvePortalConfiguration(), which throws on an account the setup script has
- * not been run against.
+ * resolvePortalConfiguration(variant), which throws on an account the setup
+ * script has not been run against.
  */
 export async function createBillingPortalSession(params: {
   customerId: string;
@@ -63,12 +65,12 @@ export async function createBillingPortalSession(params: {
 // ---------------------------------------------------------------------------
 
 let priceCache: Record<LookupKey, string> | null = null;
-let portalConfigCache: string | null = null;
+const portalConfigCache = new Map<PortalVariant, string>();
 
 /** Test-only. Clears the per-process caches so specs are not order-dependent. */
 export function __resetBillingCaches(): void {
   priceCache = null;
-  portalConfigCache = null;
+  portalConfigCache.clear();
 }
 
 /**
@@ -107,22 +109,34 @@ export async function resolvePrices(): Promise<Record<LookupKey, string>> {
   return found;
 }
 
-/** The Customer Portal configuration tagged `nexxus_portal = 'default'`. */
-export async function resolvePortalConfiguration(): Promise<string> {
-  if (portalConfigCache) return portalConfigCache;
+/**
+ * The Customer Portal configuration tagged `nexxus_portal = <variant>`.
+ *
+ * The variant is REQUIRED rather than defaulted (ruling R24). Defaulting it
+ * would mean a call site that forgot to say who it was for silently got the
+ * owner portal, cancel button and all, which is the exact hole this pair of
+ * configurations exists to close. Callers derive it with portalVariantForRole
+ * from a server-resolved role, never from a request.
+ *
+ * Cached per variant, and a miss throws the way resolvePrices does rather than
+ * falling back to the Stripe account default, which enforces nothing.
+ */
+export async function resolvePortalConfiguration(variant: PortalVariant): Promise<string> {
+  const cached = portalConfigCache.get(variant);
+  if (cached) return cached;
 
   const stripe = getStripe();
   const result = await stripe.billingPortal.configurations.list({ limit: 100 });
-  const mine = result.data.find((c) => c.metadata?.nexxus_portal === 'default');
+  const mine = result.data.find((c) => c.metadata?.nexxus_portal === variant);
 
   if (!mine) {
     throw new Error(
-      'No Customer Portal configuration tagged nexxus_portal=default. ' +
+      `No Customer Portal configuration tagged nexxus_portal=${variant}. ` +
         'Run scripts/stripe-billing-setup.ts against this account.',
     );
   }
 
-  portalConfigCache = mine.id;
+  portalConfigCache.set(variant, mine.id);
   return mine.id;
 }
 
