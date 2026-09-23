@@ -616,17 +616,18 @@ No change. Nothing a cleaner does creates new work.
 
 **Ops (Bridger), after E–G are in prod and before the flag:**
 
-1. Run `scripts/stripe-billing-setup.ts` against test mode, then live.
-2. Stripe Dashboard → Billing → Manage failed payments: Smart Retries on; retry window ≈ 14 days; after the final retry **cancel the subscription** (NOT "mark unpaid"). **Changed 2026-09-22**, see §7.1.
-3. Automatic card updater on (verify). Customer emails on: failed payment, card expiring, upcoming renewal (annual), receipts.
-4. Live webhook endpoint: enable `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, `checkout.session.completed`.
-5. Portal branding (logo, colors) and public business info.
-6. **Stripe Tax:** set the head-office address so nexus monitoring runs from day one; choose the SaaS product tax code **with an accountant from Stripe's canonical tax-code list** (never guessed) and set it on the four Products; add registrations where required. Only then set `BILLING_TAX_ENABLED=true`, which adds `automatic_tax` to Checkout and subscriptions. Until a registration exists, Stripe Tax silently collects nothing, so the flag stays off.
-7. In the roster's comped filter, confirm the Nexxus Core pilot and every other pre-existing org show as comped (the §5.3 migration did this; nothing to click). Un-comp any internal test org you want on a real trial, giving it a runway.
-8. On your own test org: full checkout, change plan, portal cancel, pause/resume. Watch the timeline.
-9. **Payment method configuration** (§10.8). Enable **Apple Pay, Google Pay and Link**; hosted Checkout hides each one automatically on devices that cannot use it, and needs **no Apple Pay domain verification** because the page renders on `checkout.stripe.com`. ⚠️ **Do NOT enable ACH Direct Debit on this screen.** It is supported for subscriptions and we pass no `payment_method_types`, so enabling it here would turn it on in production with zero code change and silently break the paywall (an ACH subscription stays `active` after a failed debit). The Checkout Session passes `excluded_payment_method_types: ['us_bank_account']` as a belt-and-braces guard; §10.8 lists the nine changes required before ACH can ever be switched on.
-10. Set `BILLING_ENFORCEMENT_ENABLED=true` and `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` in Vercel prod. Redeploy.
-11. Decide and log the **refund policy** in the pricing doc (Jobber: none prorated; Housecall Pro: 30-day money-back). Refunds themselves are Dashboard actions.
+1. **Before running the setup script**, set the Stripe account's **privacy policy and terms of service URLs** (Dashboard → Settings → Public business information). **Live mode refuses to create a Customer Portal configuration without them**, and the script sets no `business_profile`, so the first live run fails without this. Found 2026-09-23 while implementing R24; the script has never been run against a real account, so this has never surfaced.
+2. Run `scripts/stripe-billing-setup.ts` against test mode, then live. It now creates **two** portal configurations (R24): `nexxus_portal='default'` for owners, with cancel enabled, and `nexxus_portal='remediation'` for admins, with cancel and plan-change disabled. The script creates what is missing but **never edits**, so if either config's flags are changed in the Dashboard a re-run will not repair them. Eyeball both once after the first real run.
+3. Stripe Dashboard → Billing → Manage failed payments: Smart Retries on; retry window ≈ 14 days; after the final retry **cancel the subscription** (NOT "mark unpaid"). **Changed 2026-09-22**, see §7.1.
+4. Automatic card updater on (verify). Customer emails on: failed payment, card expiring, upcoming renewal (annual), receipts.
+5. Live webhook endpoint: enable `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, `checkout.session.completed`.
+6. Portal branding (logo, colors) and public business info.
+7. **Stripe Tax:** set the head-office address so nexus monitoring runs from day one; choose the SaaS product tax code **with an accountant from Stripe's canonical tax-code list** (never guessed) and set it on the four Products; add registrations where required. Only then set `BILLING_TAX_ENABLED=true`, which adds `automatic_tax` to Checkout and subscriptions. Until a registration exists, Stripe Tax silently collects nothing, so the flag stays off.
+8. In the roster's comped filter, confirm the Nexxus Core pilot and every other pre-existing org show as comped (the §5.3 migration did this; nothing to click). Un-comp any internal test org you want on a real trial, giving it a runway.
+9. On your own test org: full checkout, change plan, portal cancel, pause/resume. Watch the timeline.
+10. **Payment method configuration** (§10.8). Enable **Apple Pay, Google Pay and Link**; hosted Checkout hides each one automatically on devices that cannot use it, and needs **no Apple Pay domain verification** because the page renders on `checkout.stripe.com`. ⚠️ **Do NOT enable ACH Direct Debit on this screen.** It is supported for subscriptions and we pass no `payment_method_types`, so enabling it here would turn it on in production with zero code change and silently break the paywall (an ACH subscription stays `active` after a failed debit). The Checkout Session passes `excluded_payment_method_types: ['us_bank_account']` as a belt-and-braces guard; §10.8 lists the nine changes required before ACH can ever be switched on.
+11. Set `BILLING_ENFORCEMENT_ENABLED=true` and `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` in Vercel prod. Redeploy.
+12. Decide and log the **refund policy** in the pricing doc (Jobber: none prorated; Housecall Pro: 30-day money-back). Refunds themselves are Dashboard actions.
 
 ## 21. Out of scope / follow-ups
 
@@ -651,9 +652,9 @@ No change. Nothing a cleaner does creates new work.
 ## 22. Open items to verify at plan time
 
 1. ~~Manager permission key that gates service/checklist writes today~~ **Resolved at plan time (2026-09-12):** migration 104 gates `service_types` on `can_manage_services` and `properties` on `can_edit_properties`; checklists carry no flag in RLS but the services page already hides them behind `can_manage_services`, so the checklist routes use it; bookings use `can_edit_bookings`. Routes call the existing `requireManagerPermission` helper.
-2. Whether `src/lib/settings.ts` (legacy sections list) is still consumed anywhere; if so, add `billing` there too.
-3. Exact `inv_status` enum values for the pending-invite count (`pending`, possibly `creating`).
-4. Stripe SDK version in `package.json` supports `integration_identifier` (API ≥ 2026-03-25) and `pause_collection` resume via empty string; bump if needed.
-5. The `platform_audit_log` write helper used by `impersonation/route.ts`, to reuse for the new actions.
-6. `APP_URL` is set in every environment (checkout success/cancel URLs must be absolute and never built from the request host).
-7. **Pricing review 2026-09-09, confirmed by Bridger 2026-09-12** and logged in the pricing doc addendum: (a) annual plans are one upfront charge per year ($348 / $948 / $1,668), not monthly billing on a 12-month commitment; (b) the annual seat price is $120/yr (12 × $10, no annual discount on seats); (c) Pro's marketing bullet changes from "Unlimited cleaner seats" to "No seat limit" (one-line change in `pricing.ts`, lands in PR D with the catalog).
+3. Whether `src/lib/settings.ts` (legacy sections list) is still consumed anywhere; if so, add `billing` there too.
+4. Exact `inv_status` enum values for the pending-invite count (`pending`, possibly `creating`).
+5. Stripe SDK version in `package.json` supports `integration_identifier` (API ≥ 2026-03-25) and `pause_collection` resume via empty string; bump if needed.
+6. The `platform_audit_log` write helper used by `impersonation/route.ts`, to reuse for the new actions.
+7. `APP_URL` is set in every environment (checkout success/cancel URLs must be absolute and never built from the request host).
+8. **Pricing review 2026-09-09, confirmed by Bridger 2026-09-12** and logged in the pricing doc addendum: (a) annual plans are one upfront charge per year ($348 / $948 / $1,668), not monthly billing on a 12-month commitment; (b) the annual seat price is $120/yr (12 × $10, no annual discount on seats); (c) Pro's marketing bullet changes from "Unlimited cleaner seats" to "No seat limit" (one-line change in `pricing.ts`, lands in PR D with the catalog).
