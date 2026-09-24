@@ -130,7 +130,8 @@ describe('billingSectionView: trialing', () => {
     const spec = specFor(trialing)
     expect(spec.card.headline).toBe('9 days left in your trial')
     expect(lines(spec)).toEqual(['6 of 15 trial seats in use'])
-    expect(kinds(spec)).toEqual(['choose-plan', 'extend'])
+    // 9 days is outside the <=3 day window (I4): Extend is not offered yet.
+    expect(kinds(spec)).toEqual(['choose-plan'])
     expect(spec.pickerSubmitLabel).toBe('Continue to payment')
   })
 
@@ -141,20 +142,41 @@ describe('billingSectionView: trialing', () => {
     expect(spec.card.headline).not.toBe('1 days left in your trial')
   })
 
+  // I4 / spec §13: Extend only appears once 3 or fewer days remain, the same
+  // window the banner and the paywall already honour. This is the test that
+  // replaces the bug: the old assertion expected Extend at 9 days, which is
+  // exactly the undocumented deviation the review found.
+  it('withholds Extend until 3 or fewer days remain, even though the org is eligible', () => {
+    for (const days of [14, 9, 4]) {
+      const spec = specFor({ ...trialing, access: access({ ...ACCESS_FOR.trialing, trialDaysLeft: days }) })
+      expect(kinds(spec), String(days)).toEqual(['choose-plan'])
+    }
+  })
+
+  it('offers Extend once the trial is down to 3 days or fewer', () => {
+    for (const days of [3, 2, 1, 0]) {
+      const spec = specFor({ ...trialing, access: access({ ...ACCESS_FOR.trialing, trialDaysLeft: days }) })
+      expect(kinds(spec), String(days)).toEqual(['choose-plan', 'extend'])
+    }
+  })
+
   // Mutation target: "offer the extension to an org that already used it".
-  it('drops the extension once it has been used', () => {
+  // Set inside the <=3 day window on purpose, so the day gate alone cannot
+  // make this pass; canExtendTrial:false has to be doing the work.
+  it('drops the extension once it has been used, even inside the 3-day window', () => {
     const spec = specFor({
       ...trialing,
-      access: access({ ...ACCESS_FOR.trialing, canExtendTrial: false }),
+      access: access({ ...ACCESS_FOR.trialing, trialDaysLeft: 2, canExtendTrial: false }),
     })
     expect(kinds(spec)).toEqual(['choose-plan'])
   })
 
   it('keeps the extension secondary (a link), never the primary CTA (ruling R12)', () => {
-    const extend = specFor(trialing).actions.find((a) => a.kind === 'extend')!
+    const nearEnd = { ...trialing, access: access({ ...ACCESS_FOR.trialing, trialDaysLeft: 2 }) }
+    const extend = specFor(nearEnd).actions.find((a) => a.kind === 'extend')!
     expect(extend.variant).toBe('link')
-    expect(specFor(trialing).actions[0].kind).toBe('choose-plan')
-    expect(specFor(trialing).actions[0].variant).toBe('default')
+    expect(specFor(nearEnd).actions[0].kind).toBe('choose-plan')
+    expect(specFor(nearEnd).actions[0].variant).toBe('default')
   })
 
   it('shows no portal link on a trial: there is no invoice to read yet', () => {

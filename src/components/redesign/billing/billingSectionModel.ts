@@ -226,8 +226,15 @@ function trialHeadline(daysLeft: number | null): string {
 
 function withExtend(access: BillingAccess, actions: BillingSectionAction[]): BillingSectionAction[] {
   // Ruling R12: the extension is a good-faith affordance, never a primary CTA,
-  // so it always trails the plan action as a link.
-  return access.canExtendTrial ? [...actions, EXTEND] : actions
+  // so it always trails the plan action as a link. Spec §13 (I4): it only
+  // appears once 3 or fewer days remain, the same window the banner and the
+  // paywall already honour (trial_expired's trialDaysLeft is always 0, so
+  // that state is unaffected). Offering it on day 13 of a 14-day trial let an
+  // owner burn the one-time extension for no reason.
+  if (!access.canExtendTrial) return actions
+  const days = access.trialDaysLeft
+  if (days === null || days > 3) return actions
+  return [...actions, EXTEND]
 }
 
 // ---------------------------------------------------------------------------
