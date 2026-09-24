@@ -289,6 +289,18 @@ describe('billingSectionView: past_due', () => {
     expect(specFor(pastDue).card.tone).toBe('critical')
     expect(specFor().card.tone).toBe('neutral')
   })
+
+  // The defect this replaces (item 1 of the final small pass): priceHeadline
+  // returned the literal string "Your plan is active" for a null-tier row in
+  // EVERY branch, including this one, which is exactly wrong on the branch
+  // whose whole notice is "we could not process your last payment". Mutation
+  // target: "fall back to the active copy for every state".
+  it('never says the plan is active when the row carries no tier: a payment just failed', () => {
+    const spec = specFor({ ...pastDue, tier: null })
+    expect(spec.card.headline).not.toBe('Your plan is active')
+    expect(spec.card.headline).not.toMatch(/\$/)
+    expect(spec.card.headline.toLowerCase()).not.toContain('active')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -302,6 +314,16 @@ describe('billingSectionView: unpaid', () => {
     expect(spec.pickerSubmitLabel).toBeNull()
     expect(spec.card.tone).toBe('critical')
     expect(spec.notice!.tone).toBe('critical')
+  })
+
+  // Mutation target: "fall back to the active copy for every state". `unpaid`
+  // is always frozen (access.ts's FROZEN_STATES), so "Your plan is active"
+  // was doubly wrong here: no price AND no active access.
+  it('never says the plan is active when the row carries no tier: the account is frozen', () => {
+    const spec = specFor({ access: ACCESS_FOR.unpaid, tier: null })
+    expect(spec.card.headline).not.toBe('Your plan is active')
+    expect(spec.card.headline).not.toMatch(/\$/)
+    expect(spec.card.headline.toLowerCase()).not.toContain('active')
   })
 })
 

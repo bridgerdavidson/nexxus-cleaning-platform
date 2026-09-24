@@ -205,14 +205,34 @@ function renewalLine(currentPeriodEnd: string | null, cancelAt: string | null): 
   return null
 }
 
-function priceHeadline(tier: PlanTier | null, period: BillingPeriod | null, seatCount: number | null): string {
-  // Defensive: an active org with no tier on the row cannot be priced, so it
-  // says what is true and nothing more, rather than guessing a number.
-  if (!tier) return 'Your plan is active'
-  const resolvedPeriod: BillingPeriod = period ?? 'monthly'
-  const seats = seatCount ?? PLANS[tier].includedSeats
-  const charge = planChargeCents(tier, resolvedPeriod, seats)
-  return `${formatCents(charge)} ${resolvedPeriod === 'annual' ? 'per year' : 'per month'}`
+/**
+ * `state` matters only in the defensive, tier-less branch below: whenever
+ * `tier` is present the price is computed the same way regardless of state,
+ * because a past_due or unpaid org still owes exactly what its plan costs.
+ *
+ * Defensive: an org with no tier on the row (the webhook mirror is
+ * incomplete) cannot be priced, so this says what is true for THIS state and
+ * nothing more, rather than guessing a number or reusing `active`'s headline
+ * for a state where it is false. `past_due` is NOT frozen (dunning ends by
+ * cancelling, ruling R22, so a card failure never claims the account is
+ * view-only); `unpaid` always is (`FROZEN_STATES` in access.ts), so it is the
+ * one place "active" would be a straightforward falsehood.
+ */
+function priceHeadline(state: BillingState, tier: PlanTier | null, period: BillingPeriod | null, seatCount: number | null): string {
+  if (tier) {
+    const resolvedPeriod: BillingPeriod = period ?? 'monthly'
+    const seats = seatCount ?? PLANS[tier].includedSeats
+    const charge = planChargeCents(tier, resolvedPeriod, seats)
+    return `${formatCents(charge)} ${resolvedPeriod === 'annual' ? 'per year' : 'per month'}`
+  }
+  switch (state) {
+    case 'past_due':
+      return 'We could not confirm your plan price'
+    case 'unpaid':
+      return 'Your account is in view-only mode'
+    default:
+      return 'Your plan is active'
+  }
 }
 
 function tierBadge(tier: PlanTier | null): string {
@@ -286,7 +306,7 @@ function specFor(input: BillingSectionInput, access: BillingAccess): BillingSect
         card: {
           badgeLabel: tierBadge(tier),
           tone: 'neutral',
-          headline: priceHeadline(tier, period, seatCount),
+          headline: priceHeadline(state, tier, period, seatCount),
           lines,
         },
         actions: [CHANGE_PLAN, PORTAL],
@@ -306,7 +326,7 @@ function specFor(input: BillingSectionInput, access: BillingAccess): BillingSect
         card: {
           badgeLabel: tierBadge(tier),
           tone: 'critical',
-          headline: priceHeadline(tier, period, seatCount),
+          headline: priceHeadline(state, tier, period, seatCount),
           lines,
         },
         actions: [UPDATE_PAYMENT, CHANGE_PLAN_SECONDARY],
@@ -326,7 +346,7 @@ function specFor(input: BillingSectionInput, access: BillingAccess): BillingSect
         card: {
           badgeLabel: tierBadge(tier),
           tone: 'critical',
-          headline: priceHeadline(tier, period, seatCount),
+          headline: priceHeadline(state, tier, period, seatCount),
           lines: [seatsLine(seatsInUse, access.seatCap)],
         },
         actions: [REACTIVATE],
