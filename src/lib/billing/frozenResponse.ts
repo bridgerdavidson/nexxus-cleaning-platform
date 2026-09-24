@@ -39,6 +39,20 @@ export function isBillingFrozenResponse(status: number, body: unknown): body is 
 }
 
 /**
+ * What a caller shows when a write comes back frozen.
+ *
+ * The 402's own `error` is the machine string `billing_frozen`, and every
+ * caller in this codebase toasts `result.error` verbatim, so the raw value
+ * must never reach one. This sentence replaces it: it says the change did not
+ * save, in words that are true for an owner, an admin and a manager alike, and
+ * it names no billing fact. A non-owner already has the neutral explanation bar
+ * at the top of the shell (billingBannersModel), and an owner is about to have
+ * the wall over the whole screen, so neither needs the reason repeated here.
+ */
+export const BILLING_FROZEN_MESSAGE =
+  'This account is in view-only mode right now, so that change was not saved.';
+
+/**
  * The stale-tab safety net (task 12): a tab left open across the trial
  * boundary submits a write and the server 402s. Invalidate BEFORE opening,
  * so the wall's gate (which reads access.frozen off this same cached query
