@@ -701,9 +701,28 @@ describe('BillingSection wiring', () => {
     expect(clean).not.toContain('planChargeCents(')
   })
 
-  it('leaves the Task 11 checkout-return seam marked, and does not build it', () => {
+  // Task 11: the literal `checkout=success` URL is documented here (in a
+  // comment, for a human reading this file) but never matched against in
+  // code. CheckoutReturn.tsx owns reading and clearing that query string;
+  // this file only has to mount it around everything the model can render.
+  it('documents the checkout-return URL and mounts CheckoutReturn to handle it', () => {
     expect(source).toContain('checkout=success')
     expect(clean).not.toContain('checkout=success')
+    expect(clean).toContain('import { CheckoutReturn }')
+    expect(clean).toMatch(/<CheckoutReturn>\{content\}<\/CheckoutReturn>/)
+  })
+
+  // Mutation target: mounting CheckoutReturn around only the "plan" branch,
+  // which would skip the activating state entirely for a customer whose
+  // billing row still resolves to disabled/unavailable/loading right after
+  // Checkout redirects them back.
+  it('mounts CheckoutReturn around every branch, not just the plan view', () => {
+    const returnStatement = clean.slice(clean.lastIndexOf('return <CheckoutReturn>'))
+    expect(returnStatement).toMatch(/^return <CheckoutReturn>\{content\}<\/CheckoutReturn>;/)
+    // No other return statement inside the component body: every branch
+    // assigns `content` and falls through to the one CheckoutReturn mount.
+    const body = clean.slice(clean.indexOf('export function BillingSection'), clean.indexOf('return <CheckoutReturn>'))
+    expect(body).not.toMatch(/\breturn\s*[<{]/)
   })
 
   it('writes no raw hex colour and no em dash', () => {

@@ -9,11 +9,12 @@
 // which controls an admin may actually use) lives in billingSectionModel.ts,
 // under unit test. This file renders the answer and owns the side effects.
 //
-// SEAM FOR TASK 11: hosted Checkout returns the customer to
+// TASK 11: hosted Checkout returns the customer to
 // /admin/settings?section=billing&checkout=success, which lands on THIS
-// component. The `?checkout=` return handler (read the param, confirm the new
-// plan, clear the param with replaceSearchShallow) mounts here. Not built in
-// this task.
+// component. CheckoutReturn wraps the section's content below: it renders
+// the content unchanged for a plain page view, and takes over (or, once
+// polling gives up, adds a non-blocking notice above the content) for the
+// few seconds after a purchase while our mirror of Stripe catches up.
 
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CheckoutReturn } from "@/components/redesign/billing/CheckoutReturn";
 import { PlanPicker } from "@/components/redesign/billing/PlanPicker";
 import {
   changePlan,
@@ -121,80 +123,90 @@ export function BillingSection() {
     showToast(PLAN_UPDATED, { variant: "success" });
   }
 
+  let content: React.ReactNode;
+
   if (view.kind === "disabled" || view.kind === "unavailable") {
-    return <p className="text-sm text-muted-foreground">{view.message}</p>;
-  }
-  if (view.kind === "loading") return <SectionSkeleton />;
+    content = <p className="text-sm text-muted-foreground">{view.message}</p>;
+  } else if (view.kind === "loading") {
+    content = <SectionSkeleton />;
+  } else {
+    const { spec } = view;
 
-  const { spec } = view;
+    content = (
+      <TooltipProvider delayDuration={150}>
+        <div className="min-w-0 space-y-4">
+          <SectionHeader title="Plan and billing" lead={spec.lead} />
 
-  return (
-    <TooltipProvider delayDuration={150}>
-      <div className="min-w-0 space-y-4">
-        <SectionHeader title="Plan and billing" lead={spec.lead} />
+          {spec.notice ? (
+            <p className="flex items-start gap-2 rounded-card bg-critical-50 px-4 py-3 text-sm font-semibold text-critical-700 dark:bg-critical/15 dark:text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span className="min-w-0">{spec.notice.message}</span>
+            </p>
+          ) : null}
 
-        {spec.notice ? (
-          <p className="flex items-start gap-2 rounded-card bg-critical-50 px-4 py-3 text-sm font-semibold text-critical-700 dark:bg-critical/15 dark:text-destructive">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span className="min-w-0">{spec.notice.message}</span>
-          </p>
-        ) : null}
-
-        <Card className="min-w-0 space-y-4 p-5">
-          <Badge variant={BADGE_VARIANT_FOR_TONE[spec.card.tone]}>{spec.card.badgeLabel}</Badge>
-          <div className="min-w-0 space-y-1">
-            <p className="text-2xl font-bold tabular-nums text-foreground">{spec.card.headline}</p>
-            {spec.card.lines.map((line) => (
-              <p
-                key={line.text}
-                className={cn(
-                  "text-sm",
-                  line.tone === "caution"
-                    ? "font-semibold text-caution-700 dark:text-caution"
-                    : "text-muted-foreground",
-                )}
-              >
-                {line.text}
-              </p>
-            ))}
-          </div>
-
-          {spec.actions.length ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              {spec.actions.map((action) => (
-                <ActionButton
-                  key={action.kind}
-                  action={action}
-                  isOwner={isOwner}
-                  loading={pending === action.kind}
-                  onClick={() => handleAction(action)}
-                />
+          <Card className="min-w-0 space-y-4 p-5">
+            <Badge variant={BADGE_VARIANT_FOR_TONE[spec.card.tone]}>{spec.card.badgeLabel}</Badge>
+            <div className="min-w-0 space-y-1">
+              <p className="text-2xl font-bold tabular-nums text-foreground">{spec.card.headline}</p>
+              {spec.card.lines.map((line) => (
+                <p
+                  key={line.text}
+                  className={cn(
+                    "text-sm",
+                    line.tone === "caution"
+                      ? "font-semibold text-caution-700 dark:text-caution"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {line.text}
+                </p>
               ))}
             </div>
-          ) : null}
-        </Card>
 
-        {picking && spec.pickerSubmitLabel ? (
-          <div className="pt-2">
-            <PlanPicker
-              seatsInUse={seatsInUse}
-              currentTier={asPlanTier(billing?.plan_tier)}
-              currentPeriod={asBillingPeriod(billing?.billing_period)}
-              currentSeats={billing?.seat_count ?? null}
-              orgId={orgId}
-              submitLabel={spec.pickerSubmitLabel}
-              onSubmit={handleSubmit}
-              footer={
-                <Button variant="outline" onClick={() => setPicking(false)}>
-                  Cancel
-                </Button>
-              }
-            />
-          </div>
-        ) : null}
-      </div>
-    </TooltipProvider>
-  );
+            {spec.actions.length ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                {spec.actions.map((action) => (
+                  <ActionButton
+                    key={action.kind}
+                    action={action}
+                    isOwner={isOwner}
+                    loading={pending === action.kind}
+                    onClick={() => handleAction(action)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </Card>
+
+          {picking && spec.pickerSubmitLabel ? (
+            <div className="pt-2">
+              <PlanPicker
+                seatsInUse={seatsInUse}
+                currentTier={asPlanTier(billing?.plan_tier)}
+                currentPeriod={asBillingPeriod(billing?.billing_period)}
+                currentSeats={billing?.seat_count ?? null}
+                orgId={orgId}
+                submitLabel={spec.pickerSubmitLabel}
+                onSubmit={handleSubmit}
+                footer={
+                  <Button variant="outline" onClick={() => setPicking(false)}>
+                    Cancel
+                  </Button>
+                }
+              />
+            </div>
+          ) : null}
+        </div>
+      </TooltipProvider>
+    );
+  }
+
+  // The ONLY mount point (ruling: never inside BillingPaywall, which does not
+  // exist for the common case of a trialing buyer purchasing before expiry).
+  // Wraps every branch above, not just the "plan" one: a customer landing
+  // here mid-checkout must see the activating state regardless of whichever
+  // branch their (about to be stale) billing row currently resolves to.
+  return <CheckoutReturn>{content}</CheckoutReturn>;
 }
 
 /**
