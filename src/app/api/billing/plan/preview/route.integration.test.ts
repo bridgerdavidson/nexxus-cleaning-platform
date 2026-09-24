@@ -456,6 +456,11 @@ describe('POST /api/billing/plan/preview', () => {
     }
   });
 
+  // The preview carries a future-period line, so the date rule below would let
+  // it through; this case is specifically Stripe supplying no attempt at all.
+  // (Before the "no future period" rule existed, this fixture had only a 'now'
+  // line, which meant BOTH reasons applied and the test could not tell them
+  // apart. Strengthened deliberately.)
   it('returns no next charge date when Stripe supplies none', async () => {
     const org = await withTestOrg({ billing: LIVE_BILLING });
     try {
@@ -463,9 +468,12 @@ describe('POST /api/billing/plan/preview', () => {
       stubGrowthMonthlySubscription();
       previewMock.mockResolvedValue(
         previewInvoice({
-          amountDue: 3500,
+          amountDue: 20400,
           nextPaymentAttempt: null,
-          lines: [{ amount: 3500, when: 'now' }],
+          lines: [
+            { amount: 3500, when: 'now' },
+            { amount: 16900, when: 'next' },
+          ],
         }),
       );
 
@@ -475,7 +483,58 @@ describe('POST /api/billing/plan/preview', () => {
         seat_count: 15,
       });
 
-      expect(res.body.data!.next_charge_at).toBeNull();
+      const data = res.body.data!;
+      // A future-period line IS present, so this null comes from Stripe alone.
+      expect(data.recurring_cents).toBe(16900);
+      expect(data.next_charge_at).toBeNull();
+    } finally {
+      await org.cleanup();
+    }
+  });
+
+  // ⚠ Every other fixture in this file hardcodes NEXT_ATTEMPT a year out, which
+  // is what hid this. On a preview whose WHOLE invoice is billed at the change
+  // (a cycle reset: no line starts later), the invoice Stripe returns is the one
+  // it is about to cut, so next_payment_attempt is roughly now. Stripe's own
+  // documented sample is period_end + 1h. Passing it through printed
+  // "Charged today $923.25" above "Then $948.00 on <today>".
+  it('names no next charge date when the whole invoice is billed at the change', async () => {
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      stubGrowthMonthlySubscription();
+      const soon = Math.floor(Date.now() / 1000) + 3600;
+      previewMock.mockResolvedValue(
+        previewInvoice({
+          amountDue: 92325,
+          nextPaymentAttempt: soon,
+          lines: [
+            { amount: -2475, when: 'now' },
+            { amount: 94800, when: 'now' },
+          ],
+        }),
+      );
+
+      const res = await preview(org.admin.accessToken, org.organizationId, {
+        tier: 'growth',
+        period: 'annual',
+        seat_count: 8,
+      });
+
+      const data = res.body.data!;
+      expect(data.due_now_cents).toBe(92325);
+      expect(data.next_charge_at).toBeNull();
+
+      // The copy this payload produces, end to end. The renewal sentence must
+      // drop the date rather than print one, and must never name today.
+      const note = renewalNoteFor({ preview: data, period: 'annual' });
+      expect(note).toBe('Then $948.00 every year.');
+      const today = new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date());
+      expect(note).not.toContain(today);
     } finally {
       await org.cleanup();
     }

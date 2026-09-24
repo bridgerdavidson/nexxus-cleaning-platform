@@ -43,7 +43,14 @@ export interface PlanPreviewPayload {
   due_now_cents: number;
   /** What the plan costs per period after this change, tax included when known. */
   recurring_cents: number;
-  /** ISO date of the next invoice, or null when Stripe did not supply one. */
+  /**
+   * ISO date of the NEXT invoice, or null when this preview cannot name one.
+   *
+   * Null whenever the previewed invoice is the one cut at the change (no
+   * future-period line), because Stripe's `next_payment_attempt` is then
+   * roughly now and the copy would print today's date as the next charge.
+   * Consumers must omit the sentence rather than render a bare date.
+   */
   next_charge_at: string | null;
   /** Cents of tax inside due_now_cents. 0 when this quote carries no tax. */
   tax_cents: number;
@@ -159,9 +166,27 @@ export async function POST(request: NextRequest) {
         // The preview's own future-period lines when it has them: they carry the
         // new prices, any coupon, and tax, which the sticker price does not.
         recurring_cents: totals.recurringCents ?? planChargeCents(tier, period, seatCount),
-        next_charge_at: invoice.next_payment_attempt
-          ? new Date(invoice.next_payment_attempt * 1000).toISOString()
-          : null,
+        // Only when this preview actually HAS a future period.
+        //
+        // `next_payment_attempt` is when Stripe would collect the invoice it is
+        // showing us. When the whole invoice lands in the due-now bucket (a
+        // monthly to annual switch, or any cycle reset: recurringCents is null
+        // because no line starts later), that invoice is the one cut at the
+        // change, so its next_payment_attempt is roughly NOW. Stripe's own
+        // preview sample returns period_end + 1h. Passing it through printed
+        // "Charged today $923.25" above "Then $948.00 on <today>", which reads
+        // as a second charge on the same day.
+        //
+        // Null is not a loss: renewalNoteFor and seatCapNotes already omit the
+        // date clause and fall back to "Then $X every year" / "on your next
+        // invoice", which is true. Deliberately NOT also nulled on "the date is
+        // within a day": a change made on the last day of a period has a
+        // genuine next charge tomorrow, and suppressing that would be wrong in
+        // the other direction.
+        next_charge_at:
+          totals.recurringCents !== null && invoice.next_payment_attempt
+            ? new Date(invoice.next_payment_attempt * 1000).toISOString()
+            : null,
         // Already clamped to [0, dueNowCents] by summarizePreviewInvoice, so a
         // zero quote carries zero tax without a second rule here.
         tax_cents: totals.dueNowTaxCents,
