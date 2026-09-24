@@ -364,6 +364,14 @@ describe('CheckoutReturn wiring', () => {
     expect(source).not.toContain(EM_DASH)
   })
 
+  // The `positive` ramp only has 50/DEFAULT/700 (tailwind.config.js); this was
+  // the only `text-positive-600` in the repo, which silently falls back to
+  // the foreground color in light mode since the class does not exist.
+  it('uses a real positive-ramp token, not the nonexistent positive-600', () => {
+    expect(source).not.toContain('text-positive-600')
+    expect(source).toMatch(/text-positive-700\s+dark:text-positive\b/)
+  })
+
   it('is a client component', () => {
     expect(source.trimStart().startsWith("'use client'")).toBe(true)
   })

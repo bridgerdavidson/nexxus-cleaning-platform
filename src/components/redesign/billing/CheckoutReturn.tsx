@@ -117,7 +117,7 @@ export function CheckoutReturn({ children }: { children: React.ReactNode }) {
           {copy.showSpinner ? (
             <NexxusLoader className="h-12" />
           ) : (
-            <ShieldCheck className="size-10 text-positive-600 dark:text-positive" aria-hidden />
+            <ShieldCheck className="size-10 text-positive-700 dark:text-positive" aria-hidden />
           )}
           <p className="text-lg font-semibold text-foreground">{copy.message}</p>
         </div>
