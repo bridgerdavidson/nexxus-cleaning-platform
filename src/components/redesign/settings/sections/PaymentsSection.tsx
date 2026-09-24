@@ -50,9 +50,10 @@ export function PaymentsSection() {
   );
 }
 
-interface BillingEmailForm { billingEmail: string }
+interface BillingEmailForm { billingEmail: string; contactPhone: string }
 
-/** Owner-only billing contact. One field, its own save bar. */
+/** Owner-only billing contact + the public phone number shown to homeowners when a
+ *  cleaning company can't take new online bookings (ruling R18). One save bar for both. */
 function BillingEmailBlock() {
   const { currentOrganizationId } = useAuth();
 
@@ -60,26 +61,30 @@ function BillingEmailBlock() {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("billing_email")
+      .select("billing_email, contact_phone")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return { billingEmail: (data?.billing_email as string | null) ?? "" };
+    return {
+      billingEmail: (data?.billing_email as string | null) ?? "",
+      contactPhone: (data?.contact_phone as string | null) ?? "",
+    };
   }, [currentOrganizationId]);
 
   const save = useCallback(async (v: BillingEmailForm) => {
     if (!currentOrganizationId) throw new Error("No organization");
     await updateOrgProfile(currentOrganizationId, {
       billing_email: v.billingEmail.trim() || null,
+      contact_phone: v.contactPhone.trim() || null,
     });
   }, [currentOrganizationId]);
 
   const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
-    useSettingsSection<BillingEmailForm>({ load, save, successMessage: "Billing email updated" });
+    useSettingsSection<BillingEmailForm>({ load, save, successMessage: "Billing contact updated" });
 
   if (loading) return <SectionSkeleton />;
   if (loadError || !value)
-    return <ErrorState title="Couldn't load billing email" onRetry={retry} />;
+    return <ErrorState title="Couldn't load billing contact" onRetry={retry} />;
 
   return (
     <div>
@@ -95,6 +100,19 @@ function BillingEmailBlock() {
           type="email"
           value={value.billingEmail}
           onChange={(e) => setValue({ ...value, billingEmail: e.target.value })}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Public phone number"
+        htmlFor="org-contact-phone"
+        helper="Shown to your customers if online booking is ever unavailable. Leave blank to hide it."
+      >
+        <Input
+          id="org-contact-phone"
+          className="sm:w-72"
+          type="tel"
+          value={value.contactPhone}
+          onChange={(e) => setValue({ ...value, contactPhone: e.target.value })}
         />
       </SettingRow>
       <SettingsSaveBar visible={isDirty} saving={saving} onSave={onSave} onDiscard={onDiscard} />

@@ -122,6 +122,9 @@ export interface Organization {
   cancellation_fee_type?: 'none' | 'flat' | 'percent';
   cancellation_fee_value?: number; // dollars (flat) or percent (percent)
   billing_email?: string | null;
+  /** Public contact number shown to homeowners when online booking is unavailable (ruling R18).
+   *  Distinct from user_profiles.phone, which belongs to a named individual. Optional. */
+  contact_phone?: string | null;
   // Active-job photo gate — added in migration 095.
   require_job_photos: boolean;
   // What the assigned cleaner sees on the Complete sheet — added in migration 096.

@@ -45,10 +45,13 @@ describe('apiFetch', () => {
     vi.unstubAllGlobals();
   });
 
-  // Task 12, step 2: the stale-tab 402 net, shared by every caller of
-  // apiFetch (services-api.ts, bookings-api.ts, properties-api.ts,
-  // checklists-api.ts). Hands off to the wall instead of resolving into a
-  // result a caller would toast verbatim as "billing_frozen".
+  // Task 12, step 2: the stale-tab 402 net, shared by every owner/admin/manager
+  // caller of apiFetch (services-api.ts, bookings-api.ts, checklists-api.ts).
+  // Hands off to the wall instead of resolving into a result a caller would
+  // toast verbatim as "billing_frozen". Task 13: properties-api.ts's
+  // createPropertyApi (a homeowner "add a home" call) moved OFF apiFetch for
+  // exactly this reason, this net opens the owner-only paywall, which must
+  // never reach a homeowner; see bookingUnavailable.ts.
   it('on a billing_frozen 402, hands off to the wall and never resolves', async () => {
     token.mockResolvedValue('tok_123');
     fetchMock.mockResolvedValue(

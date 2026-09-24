@@ -122,6 +122,57 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
     });
   });
 
+  describe('contact_phone', () => {
+    // Ruling R18: this is what the blocked-booking screen shows a homeowner when their
+    // cleaning company's online booking is unavailable, so it has to round-trip exactly.
+    it('writes a trimmed contact_phone and clears it with null', async () => {
+      const admin = createTestSupabaseClient();
+
+      const res = await patch({ contact_phone: '  (555) 019-2345  ' }, owner.accessToken);
+      expect(res.status).toBe(200);
+      const { data: after } = await admin
+        .from('organizations')
+        .select('contact_phone')
+        .eq('id', org.organizationId)
+        .single();
+      expect((after as { contact_phone: string | null }).contact_phone).toBe('(555) 019-2345');
+
+      const clear = await patch({ contact_phone: null }, owner.accessToken);
+      expect(clear.status).toBe(200);
+      const { data: cleared } = await admin
+        .from('organizations')
+        .select('contact_phone')
+        .eq('id', org.organizationId)
+        .single();
+      expect((cleared as { contact_phone: string | null }).contact_phone).toBeNull();
+    });
+
+    it('clears contact_phone with an empty string, the same as null', async () => {
+      const admin = createTestSupabaseClient();
+      await patch({ contact_phone: '555-019-2345' }, owner.accessToken);
+
+      const res = await patch({ contact_phone: '' }, owner.accessToken);
+      expect(res.status).toBe(200);
+      const { data } = await admin
+        .from('organizations')
+        .select('contact_phone')
+        .eq('id', org.organizationId)
+        .single();
+      expect((data as { contact_phone: string | null }).contact_phone).toBeNull();
+    });
+
+    it('rejects a contact_phone over 32 characters', async () => {
+      const res = await patch({ contact_phone: '5'.repeat(33) }, owner.accessToken);
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toBe('contact_phone must be 32 characters or fewer');
+    });
+
+    it('is owner-only (admin token is rejected)', async () => {
+      const res = await patch({ contact_phone: '555-019-2345' }, org.admin.accessToken);
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe('retired fields', () => {
     // The company name moved to the branding route; logo_url was removed with
     // the legacy paste-a-URL logo field. Either alone must no longer count as

@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { keys } from '@/lib/queryKeys';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { BookingUnavailableError, isBookingBlockedResponse } from '../bookingUnavailable';
 import type { BookingState } from './booking-types';
 
 /** Map the flow's state to the `/api/appointments/request` payload (slots -> scheduled_*). */
@@ -40,6 +41,10 @@ export function useSubmitBookingRequest() {
         body: JSON.stringify(toRequestPayload(currentOrganizationId, state)),
       });
       const data = await res.json().catch(() => ({}));
+      // Deliberately NOT routed through apiFetch: apiFetch's 402 net opens the owner-only
+      // paywall (usePaywall.openPaywall), which must never reach a homeowner. This throws a
+      // distinct error instead so the caller can render the persistent blocked notice.
+      if (isBookingBlockedResponse(res.status, data)) throw new BookingUnavailableError();
       if (!res.ok || !data.success) throw new Error(data.error || 'Could not send your request');
       return data.appointmentId as string;
     },
