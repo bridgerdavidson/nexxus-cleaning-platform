@@ -22,6 +22,7 @@ export function PeopleToolbar({
   createLabel,
   onCreate,
   showCreate,
+  createSideNote,
   search,
   onSearchChange,
   searchPlaceholder,
@@ -36,6 +37,8 @@ export function PeopleToolbar({
   createLabel: string;
   onCreate?: () => void;
   showCreate: boolean;
+  /** Optional note rendered beside the create button (e.g. the seat indicator). */
+  createSideNote?: ReactNode;
   search: string;
   onSearchChange: (v: string) => void;
   searchPlaceholder: string;
@@ -53,9 +56,12 @@ export function PeopleToolbar({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
         {showCreate ? (
-          <Button onClick={onCreate} className="shrink-0">
-            <Plus /> {createLabel}
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {createSideNote}
+            <Button onClick={onCreate} className="shrink-0">
+              <Plus /> {createLabel}
+            </Button>
+          </div>
         ) : null}
       </div>
 

@@ -122,6 +122,8 @@ export type OperatorCleanersViewProps = {
   onRetry?: () => void;
   rows: CleanerRowVM[];
   pendingInvites: PendingInviteRowVM[];
+  /** Renders beside the Invite button. Null hides it (see seatIndicatorText). */
+  seatIndicatorLabel?: string | null;
   totalActiveCount: number;
   benchedCount: number;
   canViewPayments: boolean;
@@ -157,6 +159,7 @@ export function OperatorCleanersView({
   onRetry,
   rows,
   pendingInvites,
+  seatIndicatorLabel,
   totalActiveCount,
   benchedCount,
   canViewPayments,
@@ -191,6 +194,11 @@ export function OperatorCleanersView({
         createLabel="Invite cleaner"
         onCreate={onNewCleaner}
         showCreate={showNew}
+        createSideNote={
+          seatIndicatorLabel ? (
+            <p className="text-xs text-muted-foreground">{seatIndicatorLabel}</p>
+          ) : undefined
+        }
         search={search}
         onSearchChange={onSearchChange}
         searchPlaceholder="Search by name, email, or phone"

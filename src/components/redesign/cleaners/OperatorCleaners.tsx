@@ -2,13 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { useOrgQuery } from "@/lib/useOrgQuery";
 import { supabase } from "@/lib/supabase";
+import { keys } from "@/lib/queryKeys";
 import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  classifyInviteResult,
+  postDeleteSeatToastMessage,
+  seatIndicatorText,
+} from "./seatMessagingModel";
 import {
   useAdminCleanerScorecards,
   useCleanerWorkload,
@@ -195,6 +203,8 @@ export function OperatorCleanersData({
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { access, seatsInUse, uiEnabled: billingUiEnabled, billing } = useBilling();
   const { cleaners, loading, error, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
@@ -251,6 +261,26 @@ export function OperatorCleanersData({
         .filter((i) => i.role === "cleaner" && PENDING_STATUSES.includes(i.status as PendingInviteStatus))
         .map(toPendingInviteVM),
     [invites],
+  );
+
+  // Only a `pending` invite reserves a purchased seat (matches
+  // countSeatsInUse server-side); 'creating'/'failed'/'expired' rows above
+  // are shown in the roster but consume none.
+  const pendingSeatCount = useMemo(
+    () => invites.filter((i) => i.role === "cleaner" && i.status === "pending").length,
+    [invites],
+  );
+  const isTrial = billing?.plan_tier == null;
+  const seatIndicatorLabel = useMemo(
+    () =>
+      seatIndicatorText({
+        uiEnabled: billingUiEnabled,
+        access,
+        seatsInUse,
+        pendingCount: pendingSeatCount,
+        isTrial,
+      }),
+    [billingUiEnabled, access, seatsInUse, pendingSeatCount, isTrial],
   );
 
   // Keep the selection scoped to what is currently visible, so a hidden cleaner
@@ -357,6 +387,19 @@ export function OperatorCleanersData({
     [detailId, refetch],
   );
 
+  // Seam for a follow-up task: SeatCapDialog (the priced, owner-only dialog
+  // that resolves the seat cap inline, ruling R16). Not built here by design
+  // (see .superpowers/sdd/2026-09-21-phase1f-billing-ui/task-10-brief.md,
+  // Step 3). Intentionally a no-op for now; the follow-up task fills this
+  // body in (open the dialog with `email` as SeatCapDialogProps.inviteeName)
+  // without touching the call site below.
+  const openSeatCapDialog = useCallback((inviteeName: string) => {
+    // no-op: SeatCapDialog is a follow-up task, not part of this one. Kept as
+    // a real parameter (not stripped) so the follow-up task's signature match
+    // is a copy-paste, not a rewrite.
+    void inviteeName;
+  }, []);
+
   const handleInvite = useCallback(
     async (email: string): Promise<boolean> => {
       if (!currentOrganizationId) return false;
@@ -368,18 +411,23 @@ export function OperatorCleanersData({
           organizationId: currentOrganizationId,
           accessToken,
         });
-        if (r.success) {
+        const outcome = classifyInviteResult(r);
+        if (outcome.kind === "sent") {
           await refetchInvites();
           toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        toast.error(r.error || "Could not send the invite");
+        if (outcome.kind === "seat_cap") {
+          openSeatCapDialog(email);
+          return false;
+        }
+        toast.error(outcome.message);
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetchInvites],
+    [currentOrganizationId, accessToken, refetchInvites, openSeatCapDialog],
   );
 
   const handleInviteAction = useCallback(
@@ -430,10 +478,23 @@ export function OperatorCleanersData({
     setBusy(true);
     try {
       if (kind === "remove") {
+        // Snapshotted before the delete runs: removing a cleaner member
+        // always frees exactly one purchased seat, so the post-delete count
+        // is this minus one (see postDeleteSeatToastMessage).
+        const seatsBeforeDelete = seatsInUse;
         const r = await deleteCleanerById(ids[0]);
         await refetch();
         if (r.success) {
           toast.success("Cleaner removed");
+          const seatMessage = postDeleteSeatToastMessage({
+            uiEnabled: billingUiEnabled,
+            access,
+            seatsInUseBeforeDelete: seatsBeforeDelete,
+          });
+          if (seatMessage) {
+            toast.success(seatMessage);
+            await queryClient.invalidateQueries({ queryKey: keys.billing.all });
+          }
           closeDetail();
         } else {
           toast.error(r.error || "Could not remove the cleaner");
@@ -455,7 +516,7 @@ export function OperatorCleanersData({
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, clearSelection, closeDetail]);
+  }, [confirm, refetch, clearSelection, closeDetail, seatsInUse, billingUiEnabled, access, queryClient]);
 
   const handleRowAction = useCallback(
     (id: string, action: CleanerRowAction) => {
@@ -500,6 +561,7 @@ export function OperatorCleanersData({
         onRetry={() => refetch()}
         rows={rows}
         pendingInvites={pendingInvites}
+        seatIndicatorLabel={seatIndicatorLabel}
         totalActiveCount={totalActiveCount}
         benchedCount={benchedCount}
         canViewPayments={canViewPayments}
