@@ -12,6 +12,8 @@ import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SeatCapDialog } from "@/components/redesign/billing/SeatCapDialog";
+import { seatCapFallbackToast } from "@/components/redesign/billing/seatCapDialogModel";
 import {
   classifyInviteResult,
   postDeleteSeatToastMessage,
@@ -221,6 +223,10 @@ export function OperatorCleanersData({
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
+  // The invitee whose send hit the purchased-seat cap. Non-null == the seat
+  // dialog is open, and the value is the invite that gets retried once a seat
+  // is bought (ruling R16: never lose the invite they were writing).
+  const [seatCapInvitee, setSeatCapInvitee] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyInvite, setBusyInvite] = useState<InviteRowBusy>(null);
 
@@ -387,18 +393,29 @@ export function OperatorCleanersData({
     [detailId, refetch],
   );
 
-  // Seam for a follow-up task: SeatCapDialog (the priced, owner-only dialog
-  // that resolves the seat cap inline, ruling R16). Not built here by design
-  // (see .superpowers/sdd/2026-09-21-phase1f-billing-ui/task-10-brief.md,
-  // Step 3). Intentionally a no-op for now; the follow-up task fills this
-  // body in (open the dialog with `email` as SeatCapDialogProps.inviteeName)
-  // without touching the call site below.
-  const openSeatCapDialog = useCallback((inviteeName: string) => {
-    // no-op: SeatCapDialog is a follow-up task, not part of this one. Kept as
-    // a real parameter (not stripped) so the follow-up task's signature match
-    // is a copy-paste, not a rewrite.
-    void inviteeName;
-  }, []);
+  // The seat cap (ruling R16): resolved inline, in a dialog over this screen,
+  // never by sending the operator to Billing.
+  const openSeatCapDialog = useCallback(
+    (inviteeName: string) => {
+      // SeatCapDialog renders nothing when the billing UI flag is dark or
+      // billing state is unreadable. The server 409 is gated by a DIFFERENT
+      // environment variable (BILLING_ENFORCEMENT_ENABLED, not the
+      // NEXT_PUBLIC_ mirror), so the two can drift, and a silent failure here
+      // would put us straight back to the operator clicking Send invite and
+      // getting nothing at all.
+      const fallback = seatCapFallbackToast({
+        uiEnabled: billingUiEnabled,
+        access,
+        inviteeName,
+      });
+      if (fallback) {
+        toast.error(fallback);
+        return;
+      }
+      setSeatCapInvitee(inviteeName);
+    },
+    [billingUiEnabled, access],
+  );
 
   const handleInvite = useCallback(
     async (email: string): Promise<boolean> => {
@@ -429,6 +446,20 @@ export function OperatorCleanersData({
     },
     [currentOrganizationId, accessToken, refetchInvites, openSeatCapDialog],
   );
+
+  // Called by SeatCapDialog once a seat is actually bought. Retries the exact
+  // invite that was refused, and only then closes the invite dialog behind it,
+  // so a second refusal reopens the seat dialog instead of silently dropping
+  // the address the operator typed.
+  const retryInviteAfterSeat = useCallback(() => {
+    const email = seatCapInvitee;
+    if (!email) return;
+    setSeatCapInvitee(null);
+    void (async () => {
+      const sent = await handleInvite(email);
+      if (sent) setAddOpen(false);
+    })();
+  }, [seatCapInvitee, handleInvite]);
 
   const handleInviteAction = useCallback(
     async (inviteId: string, action: InviteRowAction) => {
@@ -611,6 +642,15 @@ export function OperatorCleanersData({
       />
 
       <AddCleanerDialog open={addOpen} onOpenChange={setAddOpen} busy={busy} onInvite={handleInvite} />
+
+      <SeatCapDialog
+        open={seatCapInvitee !== null}
+        onOpenChange={(o) => {
+          if (!o) setSeatCapInvitee(null);
+        }}
+        inviteeName={seatCapInvitee}
+        onSeatAdded={retryInviteAfterSeat}
+      />
 
       <ConfirmDialog
         open={!!confirm}
