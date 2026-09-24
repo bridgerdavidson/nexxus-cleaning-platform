@@ -456,10 +456,24 @@ describe('cancelNoteFor', () => {
 })
 
 describe('taxNoteFor', () => {
-  // Ruling R8's honesty valve: the quote is short of the real charge, so say so.
-  it('warns that tax is added at checkout when the quote excludes it', () => {
-    expect(taxNoteFor(preview({ tax_excluded: true }))).toBe('Sales tax is calculated at checkout.')
+  // Ruling R8's honesty valve: the quote is short of the real charge, so say
+  // so, but "at checkout" is only true where checkout really happens (I7):
+  // a first purchase hands back hosted Stripe Checkout.
+  it('warns that tax is added at checkout on a first purchase (checkout really happens)', () => {
+    expect(taxNoteFor(preview({ tax_excluded: true, is_new_subscription: true }))).toBe(
+      'Sales tax is calculated at checkout.',
+    )
   })
+
+  // The bug this test replaces: the default fixture (is_new_subscription:
+  // false, the in-app Update plan / Change plan path) used to get the
+  // "at checkout" sentence even though no checkout page exists on that path.
+  it('warns tax is added on APPLY for an in-app change, and never mentions checkout', () => {
+    const note = taxNoteFor(preview({ tax_excluded: true, is_new_subscription: false }))
+    expect(note).toBe('Sales tax will be added when this change is applied.')
+    expect(note).not.toContain('checkout')
+  })
+
   it('stays silent when tax is already inside the quote', () => {
     expect(taxNoteFor(preview({ tax_excluded: false, tax_cents: 817 }))).toBeNull()
   })

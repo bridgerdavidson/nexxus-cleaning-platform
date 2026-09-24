@@ -43,12 +43,12 @@ export const BOOKING_UNAVAILABLE_MESSAGE =
   'This company is not taking new online bookings right now. Your scheduled cleanings are not affected.';
 
 /**
- * The second line, or null to omit it entirely. Never renders "To book, call them on ."
+ * The second line, or null to omit it entirely. Never renders "To book, call them at ."
  * for a blank or unset number: an empty label is worse than no line at all.
  */
 export function callToBookLine(phone: string | null | undefined): string | null {
   const trimmed = typeof phone === 'string' ? phone.trim() : '';
-  return trimmed ? `To book, call them on ${trimmed}.` : null;
+  return trimmed ? `To book, call them at ${trimmed}.` : null;
 }
 
 /**

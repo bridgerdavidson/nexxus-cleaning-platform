@@ -109,6 +109,22 @@ const FROZEN_NON_OWNER_MESSAGE =
   'View-only mode. New bookings are paused until the account owner updates the plan. Scheduled jobs still run.'
 
 /**
+ * `paused`'s own non-owner sentence. The default FROZEN_NON_OWNER_MESSAGE
+ * says bookings stay paused "until the account owner updates the plan",
+ * which is a real fact for trial_expired and canceled (the owner really can
+ * fix those by choosing a plan) but false for paused: the pause is ours, not
+ * theirs, and there is no plan the owner could update to lift it (mirrors
+ * `access.state !== 'paused'` a few lines below, which withholds the SAME
+ * false promise from the owner's own actions).
+ */
+const PAUSED_NON_OWNER_MESSAGE =
+  'View-only mode. Your account is paused. New bookings are paused. Scheduled jobs still run.'
+
+function frozenNonOwnerMessage(state: BillingState): string {
+  return state === 'paused' ? PAUSED_NON_OWNER_MESSAGE : FROZEN_NON_OWNER_MESSAGE
+}
+
+/**
  * `unpaid`'s own view-only line (I2 / ruling R22). Ruling R22 says this
  * branch is defensive only, but defensive does not mean false: the org's
  * subscription failed payment, not its trial, and the paywall
@@ -212,7 +228,7 @@ export function billingBanner(input: BillingBannerInput): BannerSpec | null {
     // Rulings R2 + R15: admin and manager both get the explanation, with NO
     // actions and no chrome gate. A manager who cannot create a booking must
     // still learn why, or this reproduces the Asana dead-control failure.
-    return { tone: 'neutral', message: FROZEN_NON_OWNER_MESSAGE, actions: [] }
+    return { tone: 'neutral', message: frozenNonOwnerMessage(access.state), actions: [] }
   }
 
   // 5. The <=3 day countdown. Owner and admin both see the banner; only the

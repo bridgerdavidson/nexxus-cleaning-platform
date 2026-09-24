@@ -225,9 +225,18 @@ export function cancelNoteFor(period: BillingPeriod): string | null {
  * Ruling R8's honesty valve. When the tax flag is off the quote is short of
  * what Stripe will take, so the summary says so rather than implying the total
  * is final.
+ *
+ * "at checkout" is only true when `is_new_subscription`: that is the one case
+ * the apply route hands back hosted Stripe Checkout. Every other reachable
+ * case here is an in-app Update plan on a live subscription (or, from a
+ * canceled org with a leftover tier, a fresh Checkout), so the generic branch
+ * never names a checkout page that is not actually part of the flow.
  */
 export function taxNoteFor(preview: PlanPreviewPayload): string | null {
-  return preview.tax_excluded ? 'Sales tax is calculated at checkout.' : null
+  if (!preview.tax_excluded) return null
+  return preview.is_new_subscription
+    ? 'Sales tax is calculated at checkout.'
+    : 'Sales tax will be added when this change is applied.'
 }
 
 /**

@@ -557,10 +557,23 @@ describe('seatCapNotes', () => {
     expect(notes.join(' ')).not.toContain('right away')
   })
 
-  it('admits the quote excludes tax while the tax flag is off', () => {
-    expect(seatCapNotes({ preview: preview({ tax_excluded: true }), inviteeName: null })).toContain(
-      'Sales tax is calculated at checkout.',
-    )
+  // "At checkout" is only true for is_new_subscription (Case B from a
+  // canceled org with a leftover tier); the default fixture (is_new_subscription:
+  // false) is the in-app Add seat / Move to plan path, which has no checkout
+  // page at all (I7). The old assertion used the default fixture and still
+  // claimed "at checkout", which was the bug.
+  it('admits the quote excludes tax while the tax flag is off, only naming checkout where it is real', () => {
+    expect(
+      seatCapNotes({ preview: preview({ tax_excluded: true, is_new_subscription: true }), inviteeName: null }),
+    ).toContain('Sales tax is calculated at checkout.')
+
+    const inAppNotes = seatCapNotes({
+      preview: preview({ tax_excluded: true, is_new_subscription: false }),
+      inviteeName: null,
+    })
+    expect(inAppNotes).toContain('Sales tax will be added when this change is applied.')
+    expect(inAppNotes.join(' ')).not.toContain('checkout')
+
     expect(
       seatCapNotes({ preview: preview({ tax_excluded: false }), inviteeName: null }).join(' '),
     ).not.toContain('Sales tax')

@@ -1,7 +1,7 @@
 // Task 13, ruling R18: the innocent third party never learns their cleaning company has a
 // money problem. This file pins the exact copy and the "omit the phone line" behavior as pure
 // functions so a future edit that reintroduces a forbidden word, or that prints an empty
-// "To book, call them on ." line, fails a test rather than shipping.
+// "To book, call them at ." line, fails a test rather than shipping.
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -59,7 +59,7 @@ describe('BOOKING_UNAVAILABLE_MESSAGE', () => {
 
 describe('callToBookLine', () => {
   // Mutation target: dropping the truthiness check, e.g. `phone ? line : ''` or
-  // `` `To book, call them on ${phone ?? ''}.` `` which would print an empty label instead
+  // `` `To book, call them at ${phone ?? ''}.` `` which would print an empty label instead
   // of omitting the line.
   it('omits the line entirely for null, undefined, empty, and whitespace-only phone', () => {
     expect(callToBookLine(null)).toBeNull();
@@ -68,8 +68,12 @@ describe('callToBookLine', () => {
     expect(callToBookLine('   ')).toBeNull();
   });
 
-  it('renders the number when one is present, trimmed', () => {
-    expect(callToBookLine('  (555) 019-2345  ')).toBe('To book, call them on (555) 019-2345.');
+  // "call them on ..." is British; this is a US product (item 7 of the final
+  // fix pass). Pinned on the exact rendered string, not a substring check, so
+  // a future edit cannot quietly reintroduce it.
+  it('renders the number when one is present, trimmed, using US phrasing ("call them at")', () => {
+    expect(callToBookLine('  (555) 019-2345  ')).toBe('To book, call them at (555) 019-2345.');
+    expect(callToBookLine('(555) 019-2345')).not.toContain('call them on');
   });
 
   it('the rendered line never mentions billing, subscriptions, trials, payment, or suspension', () => {

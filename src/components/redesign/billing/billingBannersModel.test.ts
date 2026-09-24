@@ -311,13 +311,37 @@ describe('billingBanner: frozen, NOT owner (ruling R2 + R15)', () => {
   })
 
   // The one R15 exists to protect: a manager, who cannot even see the pill or
-  // the trialing banner, MUST still learn why bookings are blocked.
+  // the trialing banner, MUST still learn why bookings are blocked. `paused`
+  // is excluded here because it gets its own sentence (below): the default
+  // wording says the account owner can fix this by updating the plan, which
+  // is true for trial_expired/canceled/unpaid but false for a pause, which
+  // is ours to lift, not theirs.
   it('gives the manager (no billing chrome at all) the SAME explanation, with no actions and no chrome gate', () => {
-    for (const state of FROZEN_STATES) {
+    for (const state of FROZEN_STATES.filter((s) => s !== 'paused')) {
       const spec = billingBanner(
         bannerInput({ isOwner: false, canSeeBillingChrome: false, access: access({ state, frozen: true }) }),
       )
       expect(spec, state).toEqual({ tone: 'neutral', message: FROZEN_NON_OWNER_MESSAGE, actions: [] })
+    }
+  })
+
+  // The bug this test replaces: paused used to fall into the same "until the
+  // account owner updates the plan" sentence as every other frozen state,
+  // which is false for a pause we control. Checked for both audiences that
+  // land on the non-owner branch (admin and manager both go through the same
+  // `access.frozen` ladder for paused, since unpaid's admin exception does
+  // not apply here).
+  it('gives paused non-owners their own sentence, never the false "owner updates the plan" claim', () => {
+    for (const canSeeBillingChrome of [true, false]) {
+      const spec = billingBanner(
+        bannerInput({ isOwner: false, canSeeBillingChrome, access: access({ state: 'paused', frozen: true }) }),
+      )
+      expect(spec, String(canSeeBillingChrome)).toEqual({
+        tone: 'neutral',
+        message: 'View-only mode. Your account is paused. New bookings are paused. Scheduled jobs still run.',
+        actions: [],
+      })
+      expect(spec?.message).not.toContain('account owner updates the plan')
     }
   })
 

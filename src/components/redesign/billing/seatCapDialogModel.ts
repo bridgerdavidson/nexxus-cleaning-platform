@@ -377,8 +377,17 @@ export function seatCapNotes(args: {
   }
 
   // Ruling R8's honesty valve, same wording as the plan picker: when the tax
-  // flag is off the quote is short of what Stripe will take.
-  if (preview.tax_excluded) notes.push('Sales tax is calculated at checkout.')
+  // flag is off the quote is short of what Stripe will take. "At checkout"
+  // is only true for is_new_subscription (Case B from a canceled org with a
+  // leftover tier); every other reachable case is an in-app Add seat / Move
+  // to plan on a live subscription, with no checkout page in the flow.
+  if (preview.tax_excluded) {
+    notes.push(
+      preview.is_new_subscription
+        ? 'Sales tax is calculated at checkout.'
+        : 'Sales tax will be added when this change is applied.',
+    )
+  }
 
   return notes
 }
