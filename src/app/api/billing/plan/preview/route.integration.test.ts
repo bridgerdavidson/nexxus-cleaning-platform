@@ -182,6 +182,32 @@ describe('POST /api/billing/plan/preview', () => {
     }
   });
 
+  // The apply route echoes this back to Stripe as proration_date so the two
+  // calls prorate at the SAME second. Returning a number nobody could act on
+  // (or omitting it) puts the quote and the charge back on two clocks.
+  it('returns the instant it priced at, and it is the instant it sent Stripe', async () => {
+    const org = await withTestOrg({ billing: LIVE_BILLING });
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      stubGrowthMonthlySubscription();
+      previewMock.mockResolvedValue(UPGRADE_PREVIEW());
+      const before = Math.floor(Date.now() / 1000);
+
+      const res = await preview(org.admin.accessToken, org.organizationId, {
+        tier: 'pro',
+        period: 'monthly',
+        seat_count: 15,
+      });
+
+      const quotedAt = res.body.data!.proration_date!;
+      expect(quotedAt).toBe(previewMock.mock.calls[0][0].prorationDate);
+      expect(quotedAt).toBeGreaterThanOrEqual(before);
+      expect(quotedAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+    } finally {
+      await org.cleanup();
+    }
+  });
+
   it('previews the exact items the apply route would send, with tax on the same condition', async () => {
     vi.stubEnv('BILLING_TAX_ENABLED', 'true');
     const org = await withTestOrg({ billing: LIVE_BILLING });
@@ -599,6 +625,8 @@ describe('POST /api/billing/plan/preview', () => {
       expect(data.tax_cents).toBe(0);
       expect(data.next_charge_at).toBeNull();
       expect(data.direction).toBe('upgrade');
+      // Nothing was prorated, so there is no instant for the apply to reuse.
+      expect(data.proration_date).toBeNull();
       expect(previewMock).not.toHaveBeenCalled();
       expect(retrieveMock).not.toHaveBeenCalled();
       expect(pricesMock).not.toHaveBeenCalled();

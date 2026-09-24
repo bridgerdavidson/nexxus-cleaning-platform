@@ -261,18 +261,29 @@ export async function listCustomerSubscriptions(
  *
  * The caller decides the direction, because only it knows what the org is on
  * today. See the direction table in src/app/api/billing/plan/route.ts.
+ *
+ * `prorationDate` is the SAME unix second previewSubscriptionChange was given,
+ * when the caller has one. Stripe prorates to the second, so without it the
+ * preview and the update evaluate at two different instants and the number the
+ * customer was quoted is not quite the number they are charged. Stripe's
+ * prorations guide says explicitly to pass the same proration_date on the
+ * update. Omitted entirely when absent, never sent as undefined.
  */
 export async function updateSubscriptionItems(
   subscriptionId: string,
   items: Stripe.SubscriptionUpdateParams.Item[],
   organizationId: string,
-  opts: { invoiceNow: boolean },
+  opts: { invoiceNow: boolean; prorationDate?: number | null },
 ): Promise<Stripe.Subscription> {
   const params: Stripe.SubscriptionUpdateParams = {
     items,
     metadata: { organization_id: organizationId },
     proration_behavior: opts.invoiceNow ? 'always_invoice' : 'create_prorations',
   };
+
+  if (typeof opts.prorationDate === 'number') {
+    params.proration_date = opts.prorationDate;
+  }
 
   // Set only on the invoicing path: the key must be ABSENT, not present and
   // undefined, on a downgrade.

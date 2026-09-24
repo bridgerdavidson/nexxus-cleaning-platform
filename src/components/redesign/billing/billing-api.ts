@@ -16,6 +16,17 @@ export interface PlanSelectionBody {
   tier: PlanTier;
   period: BillingPeriod;
   seat_count: number;
+  /**
+   * The instant the quote on screen was priced at, echoed back from the
+   * preview so POST /api/billing/plan prorates at the SAME second rather than
+   * its own (Stripe's prorations guide asks for this; without it the quoted
+   * number and the charged number drift apart).
+   *
+   * Optional and IGNORED by the preview route, which prices at now by
+   * definition. The apply route drops it when it is stale, so a forgotten or
+   * missing value only costs the precision, never the change.
+   */
+  proration_date?: number | null;
 }
 
 async function call<T>(path: string, init: RequestInit): Promise<T> {

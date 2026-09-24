@@ -137,7 +137,12 @@ export function SeatCapDialog({ open, onOpenChange, inviteeName, onSeatAdded }: 
     setSubmitError(null)
     setSubmitting(true)
     try {
-      const result = await changePlan(orgId, selection)
+      // Same instant the quote was priced at, so the seat charge matches the
+      // total this dialog showed. See PlanSelectionBody.proration_date.
+      const result = await changePlan(orgId, {
+        ...selection,
+        proration_date: quote.preview.proration_date,
+      })
       await queryClient.invalidateQueries({ queryKey: keys.billing.all })
       if (result?.checkout_url) {
         // No live subscription to amend, so the apply route hands back hosted

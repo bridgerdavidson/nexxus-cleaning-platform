@@ -307,6 +307,41 @@ describe('updateSubscriptionItems payload', () => {
     await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
     expect('payment_method_types' in updatedParams()).toBe(false);
   });
+
+  // Stripe prorates to the second and its prorations guide says to send the
+  // SAME proration_date on the update that the preview was given. Without it
+  // the two evaluate at different instants and the quoted amount is not quite
+  // the charged amount.
+  it('pins the proration instant the quote was priced at', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: true,
+      prorationDate: 1_790_000_000,
+    });
+    expect(updatedParams().proration_date).toBe(1_790_000_000);
+  });
+
+  it('pins it on the non-invoicing path too, where the credit is minted', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: false,
+      prorationDate: 1_790_000_000,
+    });
+    expect(updatedParams().proration_date).toBe(1_790_000_000);
+  });
+
+  it('omits proration_date entirely when the caller has none', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
+    // Present-and-undefined would still be sent as a key; Stripe must fall back
+    // to its own instant, which needs the key ABSENT.
+    expect('proration_date' in updatedParams()).toBe(false);
+  });
+
+  it('omits proration_date when the caller passes null', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: true,
+      prorationDate: null,
+    });
+    expect('proration_date' in updatedParams()).toBe(false);
+  });
 });
 
 describe('retrieveSubscription', () => {

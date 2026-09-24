@@ -157,6 +157,85 @@ describe('POST /api/billing/plan', () => {
     }
   });
 
+  // Stripe prorates to the second. The client echoes back the instant its quote
+  // was priced at so the apply evaluates at that same instant instead of its
+  // own, which is what makes the amount charged the amount that was shown.
+  describe('proration_date, echoed back from the quote', () => {
+    const optsOf = () => updateMock.mock.calls[0][3] as { prorationDate?: number | null };
+
+    it('pins the instant the client was quoted at', async () => {
+      const org = await withTestOrg();
+      try {
+        await promoteToOwner(org.organizationId, org.admin.userId);
+        await withLiveSubscription(org.organizationId);
+        stubSubscription([{ id: 'si_base', lookup: 'starter_monthly' }]);
+        updateMock.mockClear();
+        const quotedAt = Math.floor(Date.now() / 1000) - 20;
+
+        const res = await changePlan(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          tier: 'growth',
+          period: 'monthly',
+          seat_count: 10,
+          proration_date: quotedAt,
+        });
+
+        expect(res.status).toBe(200);
+        expect(optsOf().prorationDate).toBe(quotedAt);
+      } finally {
+        await org.cleanup();
+      }
+    });
+
+    it('prorates at its own instant when the client sends none', async () => {
+      const org = await withTestOrg();
+      try {
+        await promoteToOwner(org.organizationId, org.admin.userId);
+        await withLiveSubscription(org.organizationId);
+        stubSubscription([{ id: 'si_base', lookup: 'starter_monthly' }]);
+        updateMock.mockClear();
+
+        const res = await changePlan(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          tier: 'growth',
+          period: 'monthly',
+          seat_count: 10,
+        });
+
+        expect(res.status).toBe(200);
+        expect(optsOf().prorationDate).toBeNull();
+      } finally {
+        await org.cleanup();
+      }
+    });
+
+    // Ignored, never refused: a stale quote must not cost the operator the
+    // change they asked for, only the sub-cent precision.
+    it('drops a stale or future date and still applies the change', async () => {
+      const org = await withTestOrg();
+      try {
+        await promoteToOwner(org.organizationId, org.admin.userId);
+        await withLiveSubscription(org.organizationId);
+        stubSubscription([{ id: 'si_base', lookup: 'starter_monthly' }]);
+        updateMock.mockClear();
+
+        const res = await changePlan(org.admin.accessToken, {
+          organization_id: org.organizationId,
+          tier: 'growth',
+          period: 'monthly',
+          seat_count: 10,
+          proration_date: Math.floor(Date.now() / 1000) - 86_400,
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data?.updated).toBe(true);
+        expect(optsOf().prorationDate).toBeNull();
+      } finally {
+        await org.cleanup();
+      }
+    });
+  });
+
   it('swaps both prices on a monthly to annual switch', async () => {
     const org = await withTestOrg();
     try {

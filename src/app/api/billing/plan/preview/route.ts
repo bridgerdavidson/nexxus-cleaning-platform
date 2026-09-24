@@ -62,6 +62,12 @@ export interface PlanPreviewPayload {
    * its label come from due_now_cents; direction explains a downgrade's credit.
    */
   direction: PlanChangeDirection;
+  /**
+   * The unix second this quote was priced at, for the client to post back to
+   * POST /api/billing/plan so the apply prorates at the SAME instant. Null when
+   * nothing was prorated (a first purchase goes to Checkout). Never rendered.
+   */
+  proration_date: number | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -118,6 +124,9 @@ export async function POST(request: NextRequest) {
           tax_excluded: true,
           is_new_subscription: true,
           direction: 'upgrade',
+          // Nothing was prorated: the apply route sends this selection to
+          // hosted Checkout, which prices itself.
+          proration_date: null,
         } satisfies PlanPreviewPayload,
       });
     }
@@ -193,6 +202,9 @@ export async function POST(request: NextRequest) {
         tax_excluded: !taxOn,
         is_new_subscription: false,
         direction,
+        // Echoed back by the client on POST /api/billing/plan so the apply
+        // prorates at the instant this quote was priced at, not its own.
+        proration_date: prorationDate,
       } satisfies PlanPreviewPayload,
     });
   } catch (err) {

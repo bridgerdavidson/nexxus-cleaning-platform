@@ -137,7 +137,15 @@ export function PlanPicker({
     setSubmitError(null)
     setSubmitting(true)
     try {
-      await onSubmit({ tier, period, seat_count: pricedSeats })
+      // proration_date rides along with the triple: the apply route prorates at
+      // the instant THIS quote was priced at, so the figure above the button is
+      // the figure Stripe charges rather than one recomputed a few seconds later.
+      await onSubmit({
+        tier,
+        period,
+        seat_count: pricedSeats,
+        proration_date: preview.proration_date,
+      })
     } catch {
       setSubmitError(SUBMIT_ERROR)
     } finally {

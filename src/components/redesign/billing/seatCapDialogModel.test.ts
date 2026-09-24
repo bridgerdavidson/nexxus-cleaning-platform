@@ -73,6 +73,7 @@ function preview(over: Partial<PlanPreviewPayload> = {}): PlanPreviewPayload {
     tax_excluded: true,
     is_new_subscription: false,
     direction: 'upgrade',
+    proration_date: 1_790_000_000,
     ...over,
   }
 }
@@ -684,13 +685,25 @@ describe('SeatCapDialog.tsx wiring', () => {
     expect(dialogSource).not.toMatch(/reduce\(/)
   })
 
+  /**
+   * What handleConfirm is allowed to send: the SAME selection object that was
+   * priced, plus the instant it was priced at. Anything else in that object
+   * means the dialog quoted one thing and bought another, which is the bug
+   * these guards exist to catch.
+   */
+  const APPLIED_SELECTION =
+    /changePlan\(orgId, \{\s*\.\.\.selection,\s*proration_date: quote\.preview\.proration_date,?\s*\}\)/
+
   it('commits the seat ONLY from the confirm handler', () => {
     // Mutation target: an effect, or a call on open, that buys a seat without
     // the operator confirming the price.
     expect((dialogSource.match(/changePlan\(/g) ?? []).length).toBe(1)
     const body = dialogSource.match(/async function handleConfirm\(\): Promise<void> \{([\s\S]*?)\n {2}\}/)
     expect(body, 'handleConfirm not found in SeatCapDialog.tsx').not.toBeNull()
-    expect(body![1]).toContain('changePlan(orgId, selection)')
+    // The applied body is `selection` spread, plus proration_date read straight
+    // off the settled quote, and NOTHING else. Written as one exact shape so a
+    // fourth key (or a re-derived tier/seat count) cannot slip in beside it.
+    expect(body![1]).toMatch(APPLIED_SELECTION)
     // Nothing fires on its own: no effect anywhere in the file.
     expect(dialogSource).not.toContain('useEffect')
     // And the confirm button is the only thing that calls it.
@@ -707,7 +720,7 @@ describe('SeatCapDialog.tsx wiring', () => {
     // Mutation target: previewing one seat count and applying another, which
     // is how the quote and the invoice come apart.
     expect(dialogSource).toMatch(/previewPlan\(orgId, selection!\)/)
-    expect(dialogSource).toMatch(/changePlan\(orgId, selection\)/)
+    expect(dialogSource).toMatch(APPLIED_SELECTION)
     expect((dialogSource.match(/previewPlan\(/g) ?? []).length).toBe(1)
   })
 

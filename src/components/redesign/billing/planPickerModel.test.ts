@@ -38,6 +38,7 @@ function preview(over: Partial<PlanPreviewPayload> = {}): PlanPreviewPayload {
     tax_excluded: true,
     is_new_subscription: false,
     direction: 'upgrade',
+    proration_date: 1_790_000_000,
     ...over,
   }
 }

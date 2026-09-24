@@ -26,7 +26,12 @@ import {
 import { countSeatsInUse } from '@/lib/billing/seats';
 import { diffSubscriptionItems } from '@/lib/billing/diffSubscriptionItems';
 import { readCurrentItems } from '@/lib/billing/readCurrentItems';
-import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
+import {
+  parsePlanSelection,
+  parseProrationDate,
+  seatBoundsError,
+  seatsInUseError,
+} from '@/lib/billing/planSelection';
 import { shouldInvoiceNow } from '@/lib/billing/planDirection';
 
 export const runtime = 'nodejs';
@@ -113,7 +118,18 @@ export async function POST(request: NextRequest) {
     // this call charges. See src/lib/billing/planDirection.ts (ruling R23).
     const invoiceNow = shouldInvoiceNow(live, { tier, period, seatCount });
 
-    await updateSubscriptionItems(subscriptionId, items, organizationId, { invoiceNow });
+    // The instant the quote on screen was priced at, echoed back by the client
+    // from /plan/preview. Stripe prorates to the second, and its prorations
+    // guide asks for the same proration_date on the update, so this is what
+    // makes the amount charged the amount that was shown rather than a number
+    // recomputed a few seconds later. Null (absent, malformed, or stale) falls
+    // back to Stripe's own instant, which is what this route did before.
+    const prorationDate = parseProrationDate(body, Math.floor(Date.now() / 1000));
+
+    await updateSubscriptionItems(subscriptionId, items, organizationId, {
+      invoiceNow,
+      prorationDate,
+    });
 
     // Mirror immediately so the UI does not lag; the customer.subscription.updated
     // webhook is the real source of truth and overwrites these within seconds.
