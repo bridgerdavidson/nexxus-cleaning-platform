@@ -265,6 +265,36 @@ export function seatRangeFor(
   return { min: seatFloorFor(tier, seatsInUse), max: PLANS[tier].maxSeats }
 }
 
+const GENERIC_PRICE_ERROR = 'Could not price this change. Please try again.'
+const PAST_DUE_PRICE_ERROR = 'Please update your payment method before changing your plan.'
+
+export interface PriceErrorInfo {
+  message: string
+  /** False for a quote that can never succeed by retrying (I1): the preview
+   *  route refuses a past_due or unpaid org with `billing_payment_required`
+   *  every time, so "Try again" would be a dead control next to a message
+   *  that already told the operator what to do instead. */
+  retryable: boolean
+}
+
+/**
+ * The preview route refuses a past_due or unpaid org with the machine string
+ * `billing_payment_required`, which billing-api rethrows verbatim. Showing
+ * that raw string, or a generic "try again" next to it, is the same class of
+ * dead-control bug ruling R2 exists to prevent. Mirrors
+ * seatCapDialogModel.ts's priceErrorMessage so both purchase surfaces agree
+ * on the wording; kept here (not imported from there) because that module is
+ * named for the seat-cap dialog specifically and this one is PlanPicker's own
+ * rules file.
+ */
+export function priceErrorInfo(error: unknown): PriceErrorInfo {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  if (message.includes('billing_payment_required')) {
+    return { message: PAST_DUE_PRICE_ERROR, retryable: false }
+  }
+  return { message: GENERIC_PRICE_ERROR, retryable: true }
+}
+
 export interface QuoteState {
   /** 'pending' means show a skeleton. It NEVER means show the last number. */
   status: 'pending' | 'error' | 'ready'

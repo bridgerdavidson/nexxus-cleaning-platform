@@ -8,6 +8,7 @@ import {
   initialPeriodFor,
   initialSeatsFor,
   planLines,
+  priceErrorInfo,
   prorationNoteFor,
   renewalNoteFor,
   seatFloorFor,
@@ -464,6 +465,37 @@ describe('taxNoteFor', () => {
   })
 })
 
+describe('priceErrorInfo', () => {
+  // I1: past_due Change plan was a dead control. The preview route refuses
+  // billing_payment_required every time, so this must say so plainly AND
+  // withhold the retry affordance, or "Try again" sits next to a message
+  // that already told the operator retrying will not help.
+  it('translates the past_due/unpaid refusal and marks it NOT retryable', () => {
+    const info = priceErrorInfo(new Error('billing_payment_required'))
+    expect(info).toEqual({
+      message: 'Please update your payment method before changing your plan.',
+      retryable: false,
+    })
+    expect(info.message).not.toContain('billing_payment_required')
+  })
+
+  it('falls back to a generic, retryable message for any other error', () => {
+    expect(priceErrorInfo(new Error('boom'))).toEqual({
+      message: 'Could not price this change. Please try again.',
+      retryable: true,
+    })
+    expect(priceErrorInfo(null)).toEqual({
+      message: 'Could not price this change. Please try again.',
+      retryable: true,
+    })
+  })
+
+  it('writes no em dash in either message', () => {
+    expect(priceErrorInfo(new Error('billing_payment_required')).message).not.toContain(EM_DASH)
+    expect(priceErrorInfo(new Error('boom')).message).not.toContain(EM_DASH)
+  })
+})
+
 describe('prorationNoteFor', () => {
   it('explains a part-period charge on an upgrade to a live subscription', () => {
     expect(prorationNoteFor(preview({ direction: 'upgrade', is_new_subscription: false }))).toBe(
@@ -602,7 +634,19 @@ describe('PlanPicker delegates its money rules to this model', () => {
 
   it('shows a skeleton rather than a stale or guessed total', () => {
     expect(source).toContain('Skeleton')
-    expect(source).toContain('Could not price this change. Please try again.')
+  })
+
+  // I1: the price error text and whether "Try again" renders both come from
+  // the model, in exactly one place, so a past_due/unpaid quote (which can
+  // never be retried into success) cannot show a literal "Please try again"
+  // hardcoded in the component.
+  it('takes the price error text and the retry decision from the model, never a literal', () => {
+    expect(source).toContain('priceErrorInfo(previewQuery.error)')
+    expect(source).not.toContain('Could not price this change. Please try again.')
+    expect(source).not.toMatch(/showPriceError\s*\?\s*['"]/)
+    // The retry button itself must be conditioned on the model's answer, not
+    // rendered unconditionally next to a message it cannot act on.
+    expect(source).toMatch(/priceError\.retryable\s*\?/)
   })
 
   it('writes no raw hex colour and no em dash', () => {

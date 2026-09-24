@@ -36,6 +36,7 @@ import {
   initialPeriodFor,
   initialSeatsFor,
   planLines,
+  priceErrorInfo,
   prorationNoteFor,
   renewalNoteFor,
   quoteStateFor,
@@ -46,7 +47,6 @@ import {
   totalRowFor,
 } from './planPickerModel'
 
-const PRICE_ERROR = 'Could not price this change. Please try again.'
 const SUBMIT_ERROR = 'Could not save this change. Please try again.'
 /** Holding the plus button must not fire one request per click. */
 const SEAT_DEBOUNCE_MS = 400
@@ -117,6 +117,12 @@ export function PlanPicker({
   })
   const preview = quote.preview
   const showPriceError = quote.status === 'error'
+  // I1: past_due and unpaid refuse the preview with billing_payment_required
+  // every time, so "Try again" next to that message would be a dead control.
+  // Computed here, once, so every place the error renders (desktop, mobile,
+  // the sr-only status line) agrees on both the wording and whether a retry
+  // is offered.
+  const priceError = showPriceError ? priceErrorInfo(previewQuery.error) : null
 
   const options = buildTierOptions({ period, seatsInUse, currentTier })
   const plan = PLANS[tier]
@@ -157,15 +163,17 @@ export function PlanPicker({
   // after every hook so the hook order never changes with the flag.
   if (!billingEnforcementUiEnabled()) return null
 
-  const totalBlock = showPriceError ? (
+  const totalBlock = priceError ? (
     // "Please try again" has to come with a way to try again, or it is a dead
-    // control. Nothing else on this screen re-runs the quote when the selection
-    // has not changed.
+    // control (I1): past_due and unpaid refuse this preview every time, so
+    // that case renders no retry button at all, only the real next step.
     <div className="space-y-2">
-      <p className="text-sm font-semibold text-critical-700 dark:text-destructive">{PRICE_ERROR}</p>
-      <Button variant="outline" size="sm" onClick={() => void previewQuery.refetch()}>
-        Try again
-      </Button>
+      <p className="text-sm font-semibold text-critical-700 dark:text-destructive">{priceError.message}</p>
+      {priceError.retryable ? (
+        <Button variant="outline" onClick={() => void previewQuery.refetch()}>
+          Try again
+        </Button>
+      ) : null}
     </div>
   ) : total && preview ? (
     <div className="space-y-2">
@@ -198,8 +206,8 @@ export function PlanPicker({
 
   const pricingStatus = (
     <p className="sr-only" role="status" aria-live="polite">
-      {showPriceError
-        ? PRICE_ERROR
+      {priceError
+        ? priceError.message
         : total && preview
           ? `${total.label} ${formatCents(total.cents)}`
           : 'Pricing your selection'}
@@ -356,9 +364,9 @@ export function PlanPicker({
       <div className="sticky bottom-[calc(60px+env(safe-area-inset-bottom))] z-30 lg:hidden">
         <Card className="flex min-w-0 items-center gap-3 p-3 shadow-soft-lg">
           <div className="min-w-0 flex-1">
-            {showPriceError ? (
+            {priceError ? (
               <p className="text-xs font-semibold text-critical-700 dark:text-destructive">
-                {PRICE_ERROR}
+                {priceError.message}
               </p>
             ) : total && preview ? (
               <>
