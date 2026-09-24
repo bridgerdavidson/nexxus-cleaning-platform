@@ -1,5 +1,5 @@
 // src/components/redesign/settings/sections.test.ts
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
 import { deriveSettingsSections, isVisibleSection, REDESIGN_SETTINGS_SECTIONS } from "./sections";
 
@@ -13,6 +13,13 @@ const NONE: ManagerPermissions = {
 const perms = (o: Partial<ManagerPermissions> = {}): ManagerPermissions => ({ ...NONE, ...o });
 const ids = (role?: string, orgRole?: string, p?: ManagerPermissions) =>
   deriveSettingsSections(role, orgRole, p).map((s) => s.id);
+
+// "Plan and billing" is registered only when NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED
+// is on. The suite below asserts the FLAG-ON nav, so it stubs the flag rather
+// than relying on the unit project's env (which leaves it unset, i.e. off).
+// The flag-off nav is asserted in its own describe at the bottom of this file.
+beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED", "true"));
+afterEach(() => vi.unstubAllEnvs());
 
 describe("deriveSettingsSections", () => {
   // Updated in Task 9: "billing" was added directly after "payments". The exact
@@ -83,6 +90,39 @@ describe("isVisibleSection", () => {
   });
   it("cleaner-experience is hidden from a manager without permission", () => {
     expect(isVisibleSection("cleaner-experience", "manager", "manager", NONE)).toBe(false);
+  });
+});
+
+// Flag-dark, the Global Constraint for this whole PR: every new UI surface
+// renders nothing until ops flips NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED.
+// Registration is where it has to happen for the NAV, because a section that is
+// registered but internally disabled still puts a new item in front of a live
+// pilot org on merge day, pointing at "Billing is not enabled for this account
+// yet." The arrays below are exact, and are the flag-on arrays above minus
+// exactly one entry.
+describe("deriveSettingsSections with the billing flag off", () => {
+  beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED", ""));
+
+  it("owner sees the eight non-billing sections and no billing item", () => {
+    expect(ids("admin", "owner")).toEqual([
+      "profile", "appearance", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
+    ]);
+  });
+  it("admin sees seven sections and no billing item", () => {
+    expect(ids("admin", "admin")).toEqual([
+      "profile", "appearance", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
+    ]);
+  });
+  it("isVisibleSection refuses billing for the roles that would otherwise have it", () => {
+    expect(isVisibleSection("billing", "admin", "owner")).toBe(false);
+    expect(isVisibleSection("billing", "admin", "admin")).toBe(false);
+  });
+  // The flag gates ONLY billing. A gate that swept a second section out with it
+  // would be a regression the exact arrays above would catch, but this states it.
+  it("leaves every other section registered", () => {
+    expect(ids("admin", "owner")).toEqual(
+      REDESIGN_SETTINGS_SECTIONS.filter((s) => s.id !== "billing").map((s) => s.id),
+    );
   });
 });
 

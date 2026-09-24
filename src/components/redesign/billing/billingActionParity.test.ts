@@ -27,7 +27,7 @@
 // deriveBillingAccess can actually produce, so no case here is a fiction.
 
 import { readFileSync } from 'node:fs'
-import { describe, it, expect } from 'vitest'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { billingBanner, type BannerAction } from './billingBannersModel'
 import {
   actionStateFor,
@@ -55,6 +55,14 @@ const PURCHASE_KINDS = ['choose-plan', 'change-plan', 'extend']
 
 const isPortal = (a: { kind: string }) => PORTAL_KINDS.includes(a.kind)
 const isPurchase = (a: { kind: string }) => PURCHASE_KINDS.includes(a.kind)
+
+// This file asks "when billing IS live, do the two surfaces agree", so it runs
+// with the UI flag on. deriveSettingsSections now gates the billing section on
+// NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED (flag-dark), and with it off every
+// role would be unreachable and the parity invariant would compare two empty
+// sets, which is agreement about nothing.
+beforeEach(() => vi.stubEnv('NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED', 'true'))
+afterEach(() => vi.unstubAllEnvs())
 
 const NOW = new Date('2026-09-22T00:00:00.000Z')
 const PERIOD_END = '2026-10-21T12:00:00.000Z'
