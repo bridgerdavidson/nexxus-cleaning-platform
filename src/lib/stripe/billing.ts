@@ -159,6 +159,8 @@ export interface BillingCheckoutInput {
  * No trial_period_days: the app manages the trial and it is over by the time
  * anyone reaches checkout. No payment_method_types: Stripe picks eligible
  * methods from Dashboard settings, and hardcoding card would cost conversion.
+ * ACH is excluded by name instead (ruling R20, see the params below), because
+ * that is the one dynamic method the paywall cannot survive.
  *
  * `integration_identifier` is deliberately omitted: the installed SDK is pinned
  * to apiVersion 2025-12-15.clover and that parameter needs a much newer version,
@@ -176,6 +178,16 @@ export async function createBillingCheckoutSession(
     // Collected from day one so the address data already exists when Stripe Tax
     // is switched on later.
     billing_address_collection: 'required',
+    // ACH Direct Debit is deliberately excluded. It IS supported for
+    // subscriptions, and because we pass no payment_method_types, enabling it in
+    // the Dashboard would turn it on here with no code change. An ACH
+    // subscription stays `active` after a failed debit (Stripe voids the invoice
+    // but not the subscription), and settlement is T+4 with a 60-day consumer
+    // return window, so the paywall would unfreeze an org it could never
+    // re-freeze. Spec §10.8 lists the changes required before this line may be
+    // removed. Never swap this for payment_method_types: that parameter disables
+    // dynamic payment methods and would take the wallets down with it.
+    excluded_payment_method_types: ['us_bank_account'],
     line_items: input.lineItems,
     subscription_data: { metadata: { organization_id: input.organizationId } },
     metadata: { organization_id: input.organizationId },

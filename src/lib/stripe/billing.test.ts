@@ -207,6 +207,30 @@ describe('createBillingCheckoutSession payload', () => {
     expect('payment_method_types' in createdParams()).toBe(false);
   });
 
+  // Ruling R20. The ops checklist sends Bridger to the Dashboard screen where
+  // Apple Pay and Google Pay are switched on; ACH Direct Debit lives on the
+  // same screen, and because we pass no payment_method_types, one click there
+  // would enable it in production with no code change. An ACH subscription
+  // reports `active` after a failed debit, which deriveBillingAccess reads as
+  // proof of payment, so the paywall would unfreeze an org it could never
+  // re-freeze.
+  //
+  // BOTH assertions are load-bearing. "Fixing" this by pinning
+  // payment_method_types: ['card'] would exclude ACH and pass the first
+  // assertion while silently killing the wallets, so the second one pins the
+  // absence that keeps dynamic payment methods on.
+  it('excludes ACH so a Dashboard toggle cannot silently enable it', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    const params = createdParams();
+    expect(params.excluded_payment_method_types).toEqual(['us_bank_account']);
+    expect('payment_method_types' in params).toBe(false);
+  });
+
+  it('excludes ACH whether or not automatic tax is on', async () => {
+    await createBillingCheckoutSession(checkoutInput({ automaticTax: true }));
+    expect(createdParams().excluded_payment_method_types).toEqual(['us_bank_account']);
+  });
+
   it('never sends trial_period_days: the app owns the trial and it is over by checkout', async () => {
     await createBillingCheckoutSession(checkoutInput());
     const params = createdParams();
