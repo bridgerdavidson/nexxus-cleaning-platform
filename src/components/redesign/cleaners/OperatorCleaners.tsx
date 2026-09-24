@@ -14,6 +14,8 @@ import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SeatCapDialog } from "@/components/redesign/billing/SeatCapDialog";
 import { seatCapFallbackToast } from "@/components/redesign/billing/seatCapDialogModel";
+import { usePaywall } from "@/components/redesign/billing/usePaywall";
+import { handleBillingFrozenResponse } from "@/lib/billing/frozenResponse";
 import {
   classifyInviteResult,
   postDeleteSeatToastMessage,
@@ -206,7 +208,12 @@ export function OperatorCleanersData({
   const { currentOrganizationId, accessToken } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { access, seatsInUse, uiEnabled: billingUiEnabled, billing } = useBilling();
+  const { access, seatsInUse, uiEnabled: billingUiEnabled, billing, isOwner } = useBilling();
+  const { open: openPaywall } = usePaywall();
+  // Task 12: a frozen org's owner gets the wall on the Invite click; anyone
+  // else (admin, manager) gets a no-op click, same as every other gated
+  // "new work" button (Task 8's explanation bar already carries the reason).
+  const frozenForNewInvite = billingUiEnabled && !!access?.frozen;
   const { cleaners, loading, error, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
@@ -438,6 +445,13 @@ export function OperatorCleanersData({
           openSeatCapDialog(email);
           return false;
         }
+        if (outcome.kind === "frozen") {
+          // The stale-tab case: the dialog was already open when the org
+          // froze. Land on the wall instead of a toast reading the raw
+          // "billing_frozen" code (task 12, step 2).
+          handleBillingFrozenResponse();
+          return false;
+        }
         toast.error(outcome.message);
         return false;
       } finally {
@@ -446,6 +460,17 @@ export function OperatorCleanersData({
     },
     [currentOrganizationId, accessToken, refetchInvites, openSeatCapDialog],
   );
+
+  // Task 12, step 1: the Invite click itself, before the dialog ever opens.
+  // A frozen owner gets the wall; anyone else (admin, manager) is a no-op,
+  // matching every other gated "new work" button.
+  const handleNewCleanerClick = useCallback(() => {
+    if (frozenForNewInvite) {
+      if (isOwner) openPaywall();
+      return;
+    }
+    setAddOpen(true);
+  }, [frozenForNewInvite, isOwner, openPaywall]);
 
   // Called by SeatCapDialog once a seat is actually bought. Retries the exact
   // invite that was refused, and only then closes the invite dialog behind it,
@@ -613,7 +638,8 @@ export function OperatorCleanersData({
         onRowAction={handleRowAction}
         onInviteAction={handleInviteAction}
         onBulkDeactivate={() => setConfirm({ kind: "bulkDeactivate", ids: [...selectedIds] })}
-        onNewCleaner={() => setAddOpen(true)}
+        onNewCleaner={handleNewCleanerClick}
+        newCleanerFrozen={frozenForNewInvite}
       />
 
       <CleanerDetailSheet

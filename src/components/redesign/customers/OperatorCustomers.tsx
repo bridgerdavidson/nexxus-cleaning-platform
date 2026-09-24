@@ -5,12 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { useOpenProperty } from "@/components/redesign/properties/useOpenProperty";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { EmptyState } from "@/components/ui/empty-state";
+import { usePaywall } from "@/components/redesign/billing/usePaywall";
+import { handleBillingFrozenResponse } from "@/lib/billing/frozenResponse";
+import { classifyInviteResult } from "@/components/redesign/cleaners/seatMessagingModel";
 import {
   useAdminCustomers,
   useCustomerDetails,
@@ -226,6 +230,12 @@ function OperatorCustomersData({
   canViewBookings: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
+  const { access, uiEnabled: billingUiEnabled, isOwner } = useBilling();
+  const { open: openPaywall } = usePaywall();
+  // Task 12: a frozen org's owner gets the wall on the New customer click;
+  // anyone else (admin, manager) is a no-op, same as every other gated "new
+  // work" button (Task 8's explanation bar already carries the reason).
+  const frozenForNewCustomer = billingUiEnabled && !!access?.frozen;
   const router = useRouter();
   const pathname = usePathname();
   const { customers, loading, error, refetch, updateCustomerInState } = useAdminCustomers();
@@ -389,11 +399,18 @@ function OperatorCustomersData({
           organizationId: currentOrganizationId,
           accessToken,
         });
-        if (r.success) {
+        const outcome = classifyInviteResult(r);
+        if (outcome.kind === "sent") {
           toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        toast.error(r.error || "Could not send the invite");
+        if (outcome.kind === "frozen") {
+          // Stale-tab case: the dialog was already open when the org froze.
+          // Land on the wall instead of a toast reading "billing_frozen".
+          handleBillingFrozenResponse();
+          return false;
+        }
+        toast.error(outcome.kind === "error" ? outcome.message : "Could not send the invite");
         return false;
       } finally {
         setBusy(false);
@@ -401,6 +418,16 @@ function OperatorCustomersData({
     },
     [currentOrganizationId, accessToken],
   );
+
+  // Task 12, step 1: the New customer click itself, before the dialog ever
+  // opens.
+  const handleNewCustomerClick = useCallback(() => {
+    if (frozenForNewCustomer) {
+      if (isOwner) openPaywall();
+      return;
+    }
+    setAddOpen(true);
+  }, [frozenForNewCustomer, isOwner, openPaywall]);
 
   const runConfirm = useCallback(async () => {
     if (!confirm || !currentOrganizationId) return;
@@ -485,7 +512,8 @@ function OperatorCustomersData({
         onOpenRow={openDetail}
         onRowAction={handleRowAction}
         onBulkDelete={() => setConfirm({ kind: "bulkDelete", ids: [...selectedIds] })}
-        onNewCustomer={() => setAddOpen(true)}
+        onNewCustomer={handleNewCustomerClick}
+        newCustomerFrozen={frozenForNewCustomer}
       />
 
       <CustomerDetailSheet

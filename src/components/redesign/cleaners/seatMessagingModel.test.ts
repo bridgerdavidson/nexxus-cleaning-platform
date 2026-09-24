@@ -96,6 +96,44 @@ describe('classifyInviteResult', () => {
     expect(classifyInviteResult(r)).toEqual({ kind: 'error', message: 'Invalid email address.' })
   })
 
+  // Task 12: the org froze between the screen loading and Send invite being
+  // clicked. Matches guard.ts's exact 402 body (src/lib/billing/guard.ts),
+  // via inviteTeamMember's status/body passthrough.
+  it('classifies the send-invite 402 billing_frozen body as frozen', () => {
+    const r: InviteResultLike = {
+      success: false,
+      status: 402,
+      error: 'billing_frozen',
+      body: { error: 'billing_frozen', state: 'trial_expired', trial_ends_at: null, can_extend_trial: false },
+    }
+    expect(classifyInviteResult(r)).toEqual({ kind: 'frozen' })
+  })
+
+  it('never lets the raw billing_frozen string reach the toast copy', () => {
+    const r: InviteResultLike = {
+      success: false,
+      status: 402,
+      error: 'billing_frozen',
+      body: { error: 'billing_frozen' },
+    }
+    const outcome = classifyInviteResult(r)
+    expect(outcome.kind).toBe('frozen')
+    expect(JSON.stringify(outcome)).not.toContain('billing_frozen')
+  })
+
+  // Opposite-mistake guard, mirroring the seat_cap one above: a 402 that is
+  // NOT the billing_frozen shape (a different error code, or a 402 that
+  // happens to lack a body) must stay a real, toasted error.
+  it('treats a 402 with a different error code as a real error, not frozen', () => {
+    const r: InviteResultLike = {
+      success: false,
+      status: 402,
+      error: 'Some other reason',
+      body: { error: 'some_other_reason' },
+    }
+    expect(classifyInviteResult(r)).toEqual({ kind: 'error', message: 'Some other reason' })
+  })
+
   it('falls back to a default message on a network-level failure with no error string', () => {
     const r: InviteResultLike = { success: false }
     expect(classifyInviteResult(r)).toEqual({ kind: 'error', message: 'Could not send the invite' })

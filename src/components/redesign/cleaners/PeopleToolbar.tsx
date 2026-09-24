@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Search, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
@@ -22,6 +23,7 @@ export function PeopleToolbar({
   createLabel,
   onCreate,
   showCreate,
+  createDisabled,
   createSideNote,
   search,
   onSearchChange,
@@ -37,6 +39,14 @@ export function PeopleToolbar({
   createLabel: string;
   onCreate?: () => void;
   showCreate: boolean;
+  /**
+   * Frozen-org visual state (task 12): the button stays visible and
+   * clickable (its onClick still runs, since the click has to reach
+   * usePaywall().open() / the no-op) but reads as unavailable. aria-disabled
+   * only, never the native `disabled` attribute, which would swallow the
+   * click entirely and leave a dead control with no explanation.
+   */
+  createDisabled?: boolean;
   /** Optional note rendered beside the create button (e.g. the seat indicator). */
   createSideNote?: ReactNode;
   search: string;
@@ -58,7 +68,11 @@ export function PeopleToolbar({
         {showCreate ? (
           <div className="flex flex-wrap items-center justify-end gap-3">
             {createSideNote}
-            <Button onClick={onCreate} className="shrink-0">
+            <Button
+              onClick={onCreate}
+              aria-disabled={createDisabled || undefined}
+              className={cn("shrink-0", createDisabled && "opacity-50")}
+            >
               <Plus /> {createLabel}
             </Button>
           </div>

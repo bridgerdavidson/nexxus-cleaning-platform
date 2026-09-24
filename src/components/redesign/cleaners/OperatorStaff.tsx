@@ -2,9 +2,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { usePaywall } from "@/components/redesign/billing/usePaywall";
+import { handleBillingFrozenResponse } from "@/lib/billing/frozenResponse";
+import { classifyInviteResult } from "./seatMessagingModel";
 import {
   useAdminStaff,
   updateManagerPermissions,
@@ -130,6 +134,12 @@ export function OperatorStaffData({
   showSegmentTabs: boolean;
 }) {
   const { user, currentOrganizationId, accessToken } = useAuth();
+  const { access, uiEnabled: billingUiEnabled, isOwner } = useBilling();
+  const { open: openPaywall } = usePaywall();
+  // Task 12: a frozen org's owner gets the wall on the Invite click; anyone
+  // else (admin, manager) is a no-op, same as every other gated "new work"
+  // button (Task 8's explanation bar already carries the reason).
+  const frozenForNewInvite = billingUiEnabled && !!access?.frozen;
   const { staff, loading, error, refetch } = useAdminStaff();
   const { invites, resend, refetch: refetchInvites } = useInvites(
     currentOrganizationId,
@@ -202,12 +212,19 @@ export function OperatorStaffData({
       setBusy(true);
       try {
         const r = await inviteTeamMember({ email, role, organizationId: currentOrganizationId, accessToken });
-        if (r.success) {
+        const outcome = classifyInviteResult(r);
+        if (outcome.kind === "sent") {
           await refetchInvites();
           toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        toast.error(r.error || "Could not send the invite");
+        if (outcome.kind === "frozen") {
+          // Stale-tab case: the dialog was already open when the org froze.
+          // Land on the wall instead of a toast reading "billing_frozen".
+          handleBillingFrozenResponse();
+          return false;
+        }
+        toast.error(outcome.kind === "error" ? outcome.message : "Could not send the invite");
         return false;
       } finally {
         setBusy(false);
@@ -215,6 +232,15 @@ export function OperatorStaffData({
     },
     [currentOrganizationId, accessToken, refetchInvites],
   );
+
+  // Task 12, step 1: the Invite click itself, before the dialog ever opens.
+  const handleNewStaffClick = useCallback(() => {
+    if (frozenForNewInvite) {
+      if (isOwner) openPaywall();
+      return;
+    }
+    setAddOpen(true);
+  }, [frozenForNewInvite, isOwner, openPaywall]);
 
   const handleInviteAction = useCallback(
     async (inviteId: string, action: InviteRowAction) => {
@@ -288,7 +314,8 @@ export function OperatorStaffData({
         onOpenRow={openDetail}
         onRowAction={handleRowAction}
         onInviteAction={handleInviteAction}
-        onNewStaff={() => setAddOpen(true)}
+        onNewStaff={handleNewStaffClick}
+        newStaffFrozen={frozenForNewInvite}
       />
 
       <StaffDetailSheet

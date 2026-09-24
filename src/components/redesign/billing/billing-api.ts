@@ -10,6 +10,7 @@ import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import type { BillingPeriod, PlanTier } from '@/lib/billing/plans';
 import type { BillingStatePayload } from '@/app/api/billing/state/route';
 import type { PlanPreviewPayload } from '@/app/api/billing/plan/preview/route';
+import { handleBillingFrozenResponse, isBillingFrozenResponse } from '@/lib/billing/frozenResponse';
 
 export interface PlanSelectionBody {
   tier: PlanTier;
@@ -28,6 +29,17 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
     },
   });
   const json = (await res.json().catch(() => ({}))) as { error?: string; data?: T };
+  // Task 12, step 2: the stale-tab 402 net. A tab open across the trial
+  // boundary submits a write here (e.g. changePlan / extendTrial racing a
+  // freeze) and the server refuses. Land on the wall instead of throwing an
+  // Error whose message is the literal string "billing_frozen" for a caller
+  // to toast. The promise below deliberately never settles: the wall is
+  // about to replace whatever screen called this, so there is no state left
+  // to resolve into, and no catch block gets a chance to surface a toast.
+  if (isBillingFrozenResponse(res.status, json)) {
+    handleBillingFrozenResponse();
+    return new Promise<T>(() => {});
+  }
   if (!res.ok) throw new Error(json.error || 'Something went wrong. Please try again.');
   return json.data as T;
 }

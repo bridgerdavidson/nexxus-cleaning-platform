@@ -11,6 +11,7 @@
 // Reference: .superpowers/sdd/2026-09-21-phase1f-billing-ui/task-10-brief.md
 
 import type { BillingAccess } from '@/lib/billing/access'
+import { isBillingFrozenResponse } from '@/lib/billing/frozenResponse'
 
 // ---------------------------------------------------------------------------
 // 1. Classify the send-invite response.
@@ -35,6 +36,13 @@ export interface InviteResultLike {
 export type InviteOutcome =
   | { kind: 'sent' }
   | { kind: 'seat_cap' }
+  /**
+   * The org froze between this screen loading and Send invite being clicked
+   * (task 12's stale-tab case). The caller must hand off to the paywall
+   * (handleBillingFrozenResponse), never toast: this outcome carries no
+   * message on purpose, mirroring seat_cap below.
+   */
+  | { kind: 'frozen' }
   | { kind: 'error'; message: string }
 
 const DEFAULT_INVITE_ERROR = 'Could not send the invite'
@@ -45,6 +53,9 @@ export function classifyInviteResult(r: InviteResultLike): InviteOutcome {
   const body = r.body as { error?: unknown } | null | undefined
   if (r.status === 409 && body != null && body.error === 'seat_cap_reached') {
     return { kind: 'seat_cap' }
+  }
+  if (isBillingFrozenResponse(r.status ?? 0, body)) {
+    return { kind: 'frozen' }
   }
 
   return { kind: 'error', message: r.error || DEFAULT_INVITE_ERROR }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Users, Plus, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -148,6 +149,8 @@ export type OperatorCleanersViewProps = {
   onInviteAction: (inviteId: string, action: InviteRowAction) => void;
   onBulkDeactivate: () => void;
   onNewCleaner?: () => void;
+  /** Task 12: frozen-org visual state for the Invite cleaner button(s). */
+  newCleanerFrozen?: boolean;
 };
 
 export function OperatorCleanersView({
@@ -181,6 +184,7 @@ export function OperatorCleanersView({
   onInviteAction,
   onBulkDeactivate,
   onNewCleaner,
+  newCleanerFrozen,
 }: OperatorCleanersViewProps) {
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
   const filtersActive = !!search;
@@ -194,6 +198,7 @@ export function OperatorCleanersView({
         createLabel="Invite cleaner"
         onCreate={onNewCleaner}
         showCreate={showNew}
+        createDisabled={newCleanerFrozen}
         createSideNote={
           seatIndicatorLabel ? (
             <p className="text-xs text-muted-foreground">{seatIndicatorLabel}</p>
@@ -268,7 +273,11 @@ export function OperatorCleanersView({
           }
           action={
             totalActiveCount === 0 && pendingCount === 0 && showNew ? (
-              <Button onClick={onNewCleaner}>
+              <Button
+                onClick={onNewCleaner}
+                aria-disabled={newCleanerFrozen || undefined}
+                className={cn(newCleanerFrozen && "opacity-50")}
+              >
                 <Plus /> Invite cleaner
               </Button>
             ) : filtersActive ? (

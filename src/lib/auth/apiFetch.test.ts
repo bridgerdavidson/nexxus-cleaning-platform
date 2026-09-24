@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/auth/clientAccessToken', () => ({ getAccessToken: vi.fn() }));
+vi.mock('@/lib/billing/frozenResponse', () => ({
+  isBillingFrozenResponse: vi.fn(
+    (status: number, body: unknown) =>
+      status === 402 && !!body && typeof body === 'object' && (body as { error?: unknown }).error === 'billing_frozen',
+  ),
+  handleBillingFrozenResponse: vi.fn(),
+}));
 
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { handleBillingFrozenResponse } from '@/lib/billing/frozenResponse';
 import { apiFetch } from './apiFetch';
 
 const token = vi.mocked(getAccessToken);
@@ -15,14 +23,61 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/** True only if the promise settled (resolved or rejected) before a flushed tick. */
+async function settledSoon(p: Promise<unknown>): Promise<boolean> {
+  let settled = false;
+  p.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  return settled;
+}
+
 describe('apiFetch', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
     token.mockReset();
+    vi.mocked(handleBillingFrozenResponse).mockReset();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  // Task 12, step 2: the stale-tab 402 net, shared by every caller of
+  // apiFetch (services-api.ts, bookings-api.ts, properties-api.ts,
+  // checklists-api.ts). Hands off to the wall instead of resolving into a
+  // result a caller would toast verbatim as "billing_frozen".
+  it('on a billing_frozen 402, hands off to the wall and never resolves', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(
+      jsonResponse(402, { error: 'billing_frozen', state: 'trial_expired', can_extend_trial: false }),
+    );
+    const p = apiFetch('/api/services', { method: 'POST', body: {} });
+    const settled = await settledSoon(p);
+    expect(handleBillingFrozenResponse).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+  });
+
+  // Mutation target: widening the check to every 402, or every non-2xx,
+  // instead of guard.ts's exact billing_frozen shape. A seat-cap 409 (a real
+  // 4xx this codebase already special-cases elsewhere) and a 402 with an
+  // unrelated error code must both resolve normally and never touch the wall.
+  it('a 402 with a different error code resolves normally, untouched by the wall', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(jsonResponse(402, { error: 'some_other_reason' }));
+    const res = await apiFetch('/api/services', { method: 'POST', body: {} });
+    expect(res).toEqual({ success: false, error: 'some_other_reason', status: 402 });
+    expect(handleBillingFrozenResponse).not.toHaveBeenCalled();
+  });
+
+  it('a 409 seat-cap response resolves normally, untouched by the wall', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(jsonResponse(409, { error: 'seat_cap_reached' }));
+    const res = await apiFetch('/api/admin/send-invite', { method: 'POST', body: {} });
+    expect(res).toEqual({ success: false, error: 'seat_cap_reached', status: 409 });
+    expect(handleBillingFrozenResponse).not.toHaveBeenCalled();
   });
 
   it('returns a 401 result without calling fetch when there is no session', async () => {

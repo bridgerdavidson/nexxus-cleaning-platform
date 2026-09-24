@@ -1,6 +1,7 @@
 "use client";
 
 import { Users, Plus, RefreshCw, X, Mail } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -133,6 +134,8 @@ export type OperatorStaffViewProps = {
   onRowAction: (id: string, action: StaffRowAction) => void;
   onInviteAction: (inviteId: string, action: InviteRowAction) => void;
   onNewStaff?: () => void;
+  /** Task 12: frozen-org visual state for the Invite team member button(s). */
+  newStaffFrozen?: boolean;
 };
 
 export function OperatorStaffView({
@@ -156,6 +159,7 @@ export function OperatorStaffView({
   onRowAction,
   onInviteAction,
   onNewStaff,
+  newStaffFrozen,
 }: OperatorStaffViewProps) {
   const filtersActive = !!search;
   const showNew = canManage && !!onNewStaff;
@@ -168,6 +172,7 @@ export function OperatorStaffView({
         createLabel="Invite staff"
         onCreate={onNewStaff}
         showCreate={showNew}
+        createDisabled={newStaffFrozen}
         search={search}
         onSearchChange={onSearchChange}
         searchPlaceholder="Search by name or email"
@@ -220,7 +225,11 @@ export function OperatorStaffView({
           }
           action={
             totalCount === 0 && pendingCount === 0 && showNew ? (
-              <Button onClick={onNewStaff}>
+              <Button
+                onClick={onNewStaff}
+                aria-disabled={newStaffFrozen || undefined}
+                className={cn(newStaffFrozen && "opacity-50")}
+              >
                 <Plus /> Invite team member
               </Button>
             ) : filtersActive ? (

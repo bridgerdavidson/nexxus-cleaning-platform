@@ -1,4 +1,5 @@
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { handleBillingFrozenResponse, isBillingFrozenResponse } from '@/lib/billing/frozenResponse';
 
 export type ApiResult<T> =
   | { success: true; data: T }
@@ -42,6 +43,18 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit): Promise<Api
   const json = (await res.json().catch(() => null)) as
     | { success?: boolean; data?: T; error?: string }
     | null;
+
+  // Task 12, step 2: the stale-tab 402 net. A write route guarded by
+  // assertOrgWritable (src/lib/billing/guard.ts) refuses because the org
+  // froze after this tab last checked. Hand off to the paywall instead of
+  // resolving into `{ success: false, error: 'billing_frozen' }`, which every
+  // caller in this codebase toasts verbatim. The returned promise never
+  // settles: the wall is about to replace whatever called this, so there is
+  // no caller left to hand a result to.
+  if (isBillingFrozenResponse(res.status, json)) {
+    handleBillingFrozenResponse();
+    return new Promise<ApiResult<T>>(() => {});
+  }
 
   if (!res.ok || !json || json.success !== true) {
     return {
