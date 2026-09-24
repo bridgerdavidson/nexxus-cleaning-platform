@@ -69,7 +69,7 @@ describe('paywallCopyFor', () => {
   it('names the pause resume date when there is one', () => {
     expect(paywallCopyFor('paused', { pauseResumesAt: '2026-11-03T00:00:00.000Z' })).toEqual({
       headline: 'Your account is paused',
-      subhead: 'Paused until November 3, 2026. Contact us if you need to resume early.',
+      subhead: 'Paused until November 3, 2026. Your account resumes automatically on that date.',
     })
   })
 
@@ -77,10 +77,29 @@ describe('paywallCopyFor', () => {
     for (const bad of [null, '', 'not-a-date']) {
       const copy = paywallCopyFor('paused', { pauseResumesAt: bad })!
       expect(copy.subhead, String(bad)).toBe(
-        'Your account is paused for now. Contact us if you need to resume early.',
+        'Your account is paused for now. It will resume once the pause is lifted.',
       )
       expect(copy.subhead).not.toMatch(/until\s*\./)
     }
+  })
+
+  // The dead instruction this replaces: "Contact us if you need to resume
+  // early" named no route the customer could actually use. Pinned by name
+  // (item 3 of the final small pass) so a regression is unmissable, not just
+  // a passing coincidence of the exact-string assertions above.
+  it('never invites the customer to contact us on a paused wall: there is no route to do it', () => {
+    for (const pauseResumesAt of ['2026-11-03T00:00:00.000Z', null, 'not-a-date']) {
+      const copy = paywallCopyFor('paused', { pauseResumesAt })!
+      expect(copy.subhead, String(pauseResumesAt)).not.toMatch(/contact/i)
+    }
+  })
+
+  // Mutation target: "claim the pause resumes automatically with no date to
+  // back it up", which `pauseSubscription` never promises for an open-ended
+  // pause (no `resumes_at` sent to Stripe).
+  it('makes no auto-resume promise on a paused wall when there is no resume date', () => {
+    const copy = paywallCopyFor('paused', { pauseResumesAt: null })!
+    expect(copy.subhead).not.toContain('automatically')
   })
 
   it('returns null for every state that has no wall copy', () => {

@@ -378,7 +378,19 @@ function specFor(input: BillingSectionInput, access: BillingAccess): BillingSect
           badgeLabel: 'Paused',
           tone: 'caution',
           headline: until ? `Your account is paused until ${until}.` : 'Your account is paused.',
-          lines: [{ text: 'Contact us to resume early.', tone: 'muted' }],
+          // No "Contact us": there is no support route on screen (or
+          // anywhere in the product) for a customer to ask us to resume
+          // early, so that instruction was a dead one. `pauseSubscription`
+          // (src/lib/stripe/billing.ts) sets Stripe's own `resumes_at`, which
+          // really does lift the pause on its own; an open-ended pause (no
+          // date) has none, so it says only what is true there too, with no
+          // promise about when.
+          lines: [{
+            text: until
+              ? 'It resumes automatically on that date.'
+              : 'It will resume once the pause is lifted.',
+            tone: 'muted',
+          }],
         },
         // NO CONTROLS. The pause is ours, not theirs; selling them a plan
         // they cannot use would be worse than saying nothing.

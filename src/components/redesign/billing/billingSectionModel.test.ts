@@ -345,15 +345,34 @@ describe('billingSectionView: paused', () => {
   it('explains the pause, names the resume date, and offers NOTHING to click', () => {
     const spec = specFor({ access: ACCESS_FOR.paused, pauseResumesAt: CANCEL_AT })
     expect(spec.card.headline).toBe(`Your account is paused until ${formatBillingDate(CANCEL_AT)}.`)
-    expect(lines(spec)).toEqual(['Contact us to resume early.'])
+    expect(lines(spec)).toEqual(['It resumes automatically on that date.'])
     expect(spec.actions).toEqual([])
     expect(spec.pickerSubmitLabel).toBeNull()
+  })
+
+  // The dead instruction this replaces: "Contact us to resume early" named no
+  // route the customer could actually use (no support link or address renders
+  // anywhere in the product). Pinned by name so a regression is unmissable.
+  it('never invites the customer to contact us: there is no route to do it', () => {
+    for (const pauseResumesAt of [CANCEL_AT, null]) {
+      const spec = specFor({ access: ACCESS_FOR.paused, pauseResumesAt })
+      expect(lines(spec).join(' '), String(pauseResumesAt)).not.toMatch(/contact/i)
+    }
   })
 
   it('drops the date from the sentence rather than printing "paused until ."', () => {
     const spec = specFor({ access: ACCESS_FOR.paused, pauseResumesAt: null })
     expect(spec.card.headline).toBe('Your account is paused.')
     expect(spec.card.headline).not.toContain('until')
+  })
+
+  // Mutation target: "claim the pause resumes automatically with no date to
+  // back it up", which is a promise `pauseSubscription` never makes for an
+  // open-ended pause (no `resumes_at` passed to Stripe).
+  it('makes no auto-resume promise when there is no resume date', () => {
+    const spec = specFor({ access: ACCESS_FOR.paused, pauseResumesAt: null })
+    expect(lines(spec)).toEqual(['It will resume once the pause is lifted.'])
+    expect(lines(spec).join(' ')).not.toContain('automatically')
   })
 })
 

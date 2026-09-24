@@ -50,11 +50,17 @@ export function paywallCopyFor(
       const until = formatBillingDate(opts.pauseResumesAt)
       return {
         headline: 'Your account is paused',
-        // An absent or unparseable resume date must never render as
-        // "Paused until . Contact us", so the date drops out of the sentence.
+        // No "Contact us": there is no support route on screen (or anywhere
+        // in the product) for a customer to ask us to resume early, so that
+        // invitation was a dead instruction. `pauseSubscription`
+        // (src/lib/stripe/billing.ts) sets Stripe's own `resumes_at`, which
+        // really does lift the pause on its own, so the date branch says
+        // exactly that instead. An absent or unparseable resume date must
+        // never render as "Paused until .", so the date drops out of the
+        // sentence, and an open-ended pause makes no promise about when.
         subhead: until
-          ? `Paused until ${until}. Contact us if you need to resume early.`
-          : 'Your account is paused for now. Contact us if you need to resume early.',
+          ? `Paused until ${until}. Your account resumes automatically on that date.`
+          : 'Your account is paused for now. It will resume once the pause is lifted.',
       }
     }
     default:
