@@ -281,10 +281,15 @@ export function PlanPicker({
                     </p>
                   ) : null}
                   {!option.available && onResolveTooSmall ? (
+                    // A standalone tappable link row: link styling, not a
+                    // boxed button, but a comfortable hit area rather than
+                    // the 36px size="sm" gives it (same convention as
+                    // PaymentMethodRow's link actions and the paywall's
+                    // Extend link).
                     <Button
                       variant="link"
                       size="sm"
-                      className="mt-1 self-start px-0"
+                      className="mt-1 h-auto min-h-[44px] self-start px-0"
                       onClick={() => onResolveTooSmall(option.tier)}
                     >
                       See options

@@ -104,7 +104,17 @@ export function BillingPaywall({ children }: { children: React.ReactNode }) {
   )
 
   const extendLink = access?.canExtendTrial ? (
-    <Button variant="link" size="sm" onClick={handleExtend} loading={extending}>
+    // A standalone tappable link row (rendered alone in the footer, not
+    // inline with other text): kept as link styling, not a boxed button, but
+    // given a comfortable hit area rather than the 36px size="sm" gives it.
+    // Same convention as PaymentMethodRow's link actions.
+    <Button
+      variant="link"
+      size="sm"
+      className="h-auto min-h-[44px] px-1"
+      onClick={handleExtend}
+      loading={extending}
+    >
       Extend your trial by seven days
     </Button>
   ) : null

@@ -530,6 +530,15 @@ describe('TrialPill wiring', () => {
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(source).not.toContain(EM_DASH)
   })
+
+  // Touch-target rule: the visible glyph is small on purpose (it has to fit
+  // inside the pill), but the tap target must still be padded out to a
+  // comfortable size via an invisible expansion, not left at its 16px visual
+  // footprint.
+  it('pads the 16px dismiss control out to a comfortable hit area', () => {
+    expect(clean).toMatch(/before:-inset-\[14px\]/)
+    expect(clean).toMatch(/before:content-\[['"]{2}\]/)
+  })
 })
 
 describe('BillingBanners wiring', () => {
@@ -569,6 +578,13 @@ describe('BillingBanners wiring', () => {
 
   it('routes the Update payment method CTA through getPortalUrl, not a hand-built URL', () => {
     expect(clean).toContain('getPortalUrl(')
+  })
+
+  // Touch-target rule: these render as real buttons (default/outline per
+  // BannerAction.variant), so they must be >=44px (size="default"), not the
+  // 36px size="sm".
+  it('renders the banner action buttons at the 44px default size, not size="sm"', () => {
+    expect(clean).not.toMatch(/size="sm"/)
   })
 
   it('writes no raw hex colour and no em dash', () => {

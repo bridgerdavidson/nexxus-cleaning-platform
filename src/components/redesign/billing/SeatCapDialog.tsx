@@ -195,7 +195,9 @@ export function SeatCapDialog({ open, onOpenChange, inviteeName, onSeatAdded }: 
             <p className="text-sm font-semibold text-critical-700 dark:text-destructive">
               {priceErrorMessage(previewQuery.error)}
             </p>
-            <Button variant="outline" size="sm" onClick={() => void previewQuery.refetch()}>
+            {/* A real button (outline), so the >=44px touch-target rule
+                applies: size="default", not "sm" (36px). */}
+            <Button variant="outline" onClick={() => void previewQuery.refetch()}>
               Try again
             </Button>
           </div>

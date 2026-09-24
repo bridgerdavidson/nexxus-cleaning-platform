@@ -327,6 +327,15 @@ describe('BillingPaywall wiring', () => {
     expect(extend).toContain('access?.canExtendTrial')
   })
 
+  // Touch-target rule: a variant="link" control keeps link styling and is not
+  // held to the 44px button minimum, but a standalone tappable row (this link
+  // is the only thing in its row) still needs a comfortable hit area rather
+  // than the 36px size="sm" gives it on its own.
+  it('gives the standalone Extend link a comfortable tap target', () => {
+    const extend = source.match(/const extendLink =([\s\S]*?)\n {2}\) : null/)![1]
+    expect(extend).toMatch(/min-h-\[44px\]/)
+  })
+
   it('renders the picker once, only on the picker branch (paused sells nothing)', () => {
     expect((source.match(/<PlanPicker/g) ?? []).length).toBe(1)
     expect(source).toMatch(/gate\.showPicker \? \(\s*\n\s*<PlanPicker/)

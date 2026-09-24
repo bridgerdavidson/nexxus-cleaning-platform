@@ -741,6 +741,12 @@ describe('SeatCapDialog.tsx wiring', () => {
     expect(dialogSource).not.toMatch(/style=\{\{/)
   })
 
+  // Touch-target rule: "Try again" renders as a real button (outline), so it
+  // must be >=44px (size="default"), not the 36px size="sm".
+  it('renders "Try again" at the 44px default size, not size="sm"', () => {
+    expect(dialogSource).not.toMatch(/size="sm"/)
+  })
+
   it('puts no em dash in any user-facing string', () => {
     expect(dialogSource).not.toContain(EM_DASH)
   })

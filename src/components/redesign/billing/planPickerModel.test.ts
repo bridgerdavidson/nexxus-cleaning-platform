@@ -653,6 +653,16 @@ describe('PlanPicker delegates its money rules to this model', () => {
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(source).not.toContain(EM_DASH)
   })
+
+  // Touch-target rule: "See options" is a variant="link" control, not held to
+  // the 44px button minimum, but it is a standalone tappable row (the only
+  // interactive thing under the unavailable reason), so it still needs a
+  // comfortable hit area rather than the 36px size="sm" gives it alone.
+  it('gives the standalone "See options" link a comfortable tap target', () => {
+    const seeOptions = source.match(/{!option\.available[\s\S]*?See options[\s\S]*?<\/Button>/)?.[0]
+    expect(seeOptions, '"See options" Button not found').toBeTruthy()
+    expect(seeOptions).toMatch(/min-h-\[44px\]/)
+  })
 })
 
 describe('seatRangeFor', () => {

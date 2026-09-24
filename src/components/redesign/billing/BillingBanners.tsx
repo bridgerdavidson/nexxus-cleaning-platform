@@ -92,9 +92,10 @@ export function BillingBanners(): React.JSX.Element | null {
         spec.actions.length ? (
           <>
             {spec.actions.map((action) => (
+              // Real buttons (default/outline), so the >=44px touch-target
+              // rule applies: size="default" (h-11), not "sm" (h-9/36px).
               <Button
                 key={action.kind}
-                size="sm"
                 variant={action.variant}
                 loading={pending === action.kind}
                 onClick={() => handleAction(action)}

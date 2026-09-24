@@ -75,7 +75,12 @@ export function TrialPill(): React.JSX.Element | null {
           type="button"
           onClick={handleDismiss}
           aria-label="Dismiss"
-          className="-mr-1 inline-flex size-4 items-center justify-center rounded-pill opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          // The visible glyph stays 16px so it fits the pill, but the tap
+          // target is padded out to a comfortable size via an invisible
+          // pseudo-element rather than growing the badge itself (touch-target
+          // rule: this control's visual size is fixed by the pill it lives
+          // in, but it still needs a real hit area).
+          className="relative -mr-1 inline-flex size-4 items-center justify-center rounded-pill opacity-70 transition-opacity before:absolute before:-inset-[14px] before:content-[''] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-3" aria-hidden />
         </button>
