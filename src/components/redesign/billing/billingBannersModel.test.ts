@@ -242,13 +242,58 @@ describe('billingBanner: frozen, owner', () => {
     }
   })
 
-  // Ruling R22: unpaid is defensive only. It must not crash and must not go
-  // silent; it falls back to the trial_expired wording.
-  it('unpaid (defensive only, ruling R22) does not go blank and does not throw', () => {
-    expect(() => billingBanner(bannerInput({ access: access({ state: 'unpaid', frozen: true, canExtendTrial: false }) }))).not.toThrow()
+  // I2: unpaid is defensive only (ruling R22), but defensive never meant
+  // "ship the trial_expired sentence over a payment failure". It must not
+  // crash, must not go silent, and must not say "Your trial ended" for an
+  // org whose card was declined.
+  it('unpaid tells the owner the payment failed, not that the trial ended', () => {
+    expect(() =>
+      billingBanner(bannerInput({ access: access({ state: 'unpaid', frozen: true, canExtendTrial: false }) })),
+    ).not.toThrow()
     const spec = billingBanner(bannerInput({ access: access({ state: 'unpaid', frozen: true, canExtendTrial: false }) }))
-    expect(spec?.tone).toBe('critical')
-    expect(spec?.message.length).toBeGreaterThan(0)
+    expect(spec).toEqual({
+      tone: 'critical',
+      message: 'View-only mode. We could not process your payment, so new bookings are paused. Scheduled jobs still run.',
+      actions: [{ kind: 'update-payment', label: 'Update payment method', variant: 'outline' }],
+    })
+    // The exact bug this test replaces: the trial_expired wording must never
+    // appear here, whatever the sentence becomes in the future.
+    expect(spec?.message).not.toContain('trial ended')
+    expect(spec?.message).not.toContain('Your trial')
+  })
+
+  // Mutation target: reverting the action back to "Choose a plan". Unpaid is
+  // remediation (ruling R15 v4): there is nothing new to sell, the existing
+  // subscription needs a working card, exactly like past_due.
+  it('unpaid points at the portal (Update payment method), never Choose a plan', () => {
+    const spec = billingBanner(bannerInput({ access: access({ state: 'unpaid', frozen: true, canExtendTrial: true }) }))
+    expect(spec?.actions.map((a) => a.kind)).toEqual(['update-payment'])
+    expect(spec?.actions.map((a) => a.kind)).not.toContain('choose-plan')
+    expect(spec?.actions.map((a) => a.kind)).not.toContain('extend')
+  })
+
+  // Mutation target: reverting unpaid's audience back to owner-only. Ruling
+  // R15 v4: remediation is admin's to use too, the same as past_due.
+  it('gives the admin the SAME live unpaid banner as the owner', () => {
+    const owner = billingBanner(bannerInput({ isOwner: true, access: access({ state: 'unpaid', frozen: true }) }))
+    const admin = billingBanner(
+      bannerInput({ isOwner: false, canSeeBillingChrome: true, access: access({ state: 'unpaid', frozen: true }) }),
+    )
+    expect(admin).toEqual(owner)
+    expect(admin?.actions).toEqual([{ kind: 'update-payment', label: 'Update payment method', variant: 'outline' }])
+  })
+
+  // A manager still needs to know why bookings are blocked (ruling R15):
+  // unlike past_due, unpaid DOES freeze the org.
+  it('gives the manager the generic explanation, not the live unpaid banner', () => {
+    const spec = billingBanner(
+      bannerInput({ isOwner: false, canSeeBillingChrome: false, access: access({ state: 'unpaid', frozen: true }) }),
+    )
+    expect(spec).toEqual({
+      tone: 'neutral',
+      message: 'View-only mode. New bookings are paused until the account owner updates the plan. Scheduled jobs still run.',
+      actions: [],
+    })
   })
 })
 

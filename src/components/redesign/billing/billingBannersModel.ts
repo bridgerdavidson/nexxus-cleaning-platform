@@ -109,11 +109,24 @@ const FROZEN_NON_OWNER_MESSAGE =
   'View-only mode. New bookings are paused until the account owner updates the plan. Scheduled jobs still run.'
 
 /**
+ * `unpaid`'s own view-only line (I2 / ruling R22). Ruling R22 says this
+ * branch is defensive only, but defensive does not mean false: the org's
+ * subscription failed payment, not its trial, and the paywall
+ * (paywallModel.ts) and Settings (billingSectionModel.ts's UNPAID_NOTICE)
+ * already say so. Falling through to the trial_expired sentence here told an
+ * owner "Your trial ended" over a payment failure, which is the exact wrong
+ * message ruling R22 exists to prevent.
+ */
+const UNPAID_MESSAGE =
+  'View-only mode. We could not process your payment, so new bookings are paused. Scheduled jobs still run.'
+
+/**
  * Step 2's owner-facing message, one branch per frozen state with locked
- * copy. `unpaid` gets no bespoke line: ruling R22 says that branch is
- * defensive only and should never occur, so it falls back to the
- * trial_expired wording rather than the function throwing or the banner
- * going blank.
+ * copy. `unpaid` is handled in billingBanner before this function is ever
+ * called (it needs the admin audience past_due gets, not the owner-only
+ * ladder below), so the default branch below only ever serves trial_expired
+ * in practice; it stays as a safe fallback rather than a call this function
+ * cannot otherwise satisfy.
  */
 function frozenOwnerMessage(state: BillingState, pauseResumesAt: string | null): string {
   switch (state) {
@@ -135,9 +148,10 @@ function frozenOwnerMessage(state: BillingState, pauseResumesAt: string | null):
 }
 
 /**
- * The whole ladder, one banner at a time (or none). The four numbered
- * branches below match the precedence in task-8-brief.md exactly and must
- * stay in this order. Every branch is an early return: the states involved
+ * The whole ladder, one banner at a time (or none). The numbered branches
+ * below match the precedence in task-8-brief.md, with `unpaid` split out of
+ * the frozen ladder as its own remediation branch (I2), and must stay in
+ * this order. Every branch is an early return: the states involved
  * are mutually exclusive by construction (BillingAccess.state is a single
  * discriminant from deriveBillingAccess), but the early returns keep exactly
  * one banner possible even if that ever stops being true, rather than
@@ -168,7 +182,20 @@ export function billingBanner(input: BillingBannerInput): BannerSpec | null {
     }
   }
 
-  // 2 & 3. Frozen: the view-only bar. Every role this shell renders for
+  // 2. unpaid, owner or admin (ruling R15 v4: remediation is not purchase,
+  // same audience and action as past_due, not "Choose a plan": there is
+  // nothing new to sell, the existing subscription just needs a working
+  // card). Unlike past_due, unpaid DOES block bookings, so a manager still
+  // gets the generic explanation below rather than nothing at all.
+  if (access.state === 'unpaid') {
+    if (canSeeBillingChrome) {
+      return { tone: 'critical', message: UNPAID_MESSAGE, actions: [UPDATE_PAYMENT_ACTION] }
+    }
+    return { tone: 'neutral', message: FROZEN_NON_OWNER_MESSAGE, actions: [] }
+  }
+
+  // 3 & 4. Frozen: the view-only bar for the remaining frozen states
+  // (trial_expired, canceled, paused). Every role this shell renders for
   // (owner, admin, manager) can reach this branch; cleaners are on a
   // different shell and never mount this component (ruling R15).
   if (access.frozen) {
@@ -188,7 +215,7 @@ export function billingBanner(input: BillingBannerInput): BannerSpec | null {
     return { tone: 'neutral', message: FROZEN_NON_OWNER_MESSAGE, actions: [] }
   }
 
-  // 4. The <=3 day countdown. Owner and admin both see the banner; only the
+  // 5. The <=3 day countdown. Owner and admin both see the banner; only the
   // owner gets buttons (ruling R2: pay CTAs are owner only).
   if (access.state === 'trialing' && canSeeBillingChrome) {
     const days = access.trialDaysLeft
@@ -206,7 +233,7 @@ export function billingBanner(input: BillingBannerInput): BannerSpec | null {
     }
   }
 
-  // 5. Otherwise nothing: active, comped, or a trial with more than 3 days
+  // 6. Otherwise nothing: active, comped, or a trial with more than 3 days
   // left (the pill, not this ladder, covers that last one).
   return null
 }
