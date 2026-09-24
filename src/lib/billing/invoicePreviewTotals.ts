@@ -73,6 +73,27 @@ function sumInvoiceTaxes(invoice: Stripe.Invoice): number {
 }
 
 /**
+ * What a coupon takes off this line, as a positive number of cents.
+ *
+ * A line's `amount` is GROSS of its discounts, which is only ever visible once
+ * a customer holds a coupon: the launch offer is a Stripe coupon and Checkout
+ * allows promotion codes, so this is the live case, not a hypothetical. Without
+ * this subtraction a customer on a 20% repeating coupon is told "Then $169.00"
+ * on the renewal line while Stripe takes $135.20, and the same number is the
+ * seat dialog's headline "New monthly total" (seatCapTotalRow).
+ *
+ * Proration lines are `discountable: false`, so Stripe computes them from the
+ * already-discounted price and they carry an EMPTY discount_amounts. Subtracting
+ * here therefore cannot double-count them, and the same-interval due-now figure
+ * is unchanged. It is also what keeps this correct if Stripe's recommended
+ * `proration_discounts: 'itemized'` is ever switched on, where prorations do
+ * arrive gross with their discounts itemised.
+ */
+function discountsOn(line: Stripe.InvoiceLineItem): number {
+  return (line.discount_amounts ?? []).reduce((sum, d) => sum + (d?.amount ?? 0), 0);
+}
+
+/**
  * @param prorationDate the unix second passed as `subscription_details.proration_date`.
  */
 export function summarizePreviewInvoice(
@@ -102,7 +123,9 @@ export function summarizePreviewInvoice(
 
   for (const line of lines) {
     const tax = taxesOn(line);
-    const amount = line.amount ?? 0;
+    // NET of the line's own discounts. Stripe computes tax on the discounted
+    // amount, so the tax figures need no adjustment of their own.
+    const amount = (line.amount ?? 0) - discountsOn(line);
     // A missing period is treated as starting now, which puts it in the
     // charged-today bucket: the same fail-high direction as the fallback above.
     const startsAt = line.period?.start ?? 0;

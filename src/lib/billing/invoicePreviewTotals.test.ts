@@ -12,12 +12,21 @@ interface LineSpec {
   end?: number;
   tax?: number;
   taxBehavior?: 'inclusive' | 'exclusive';
+  /** Positive cents a coupon takes off this line. Stripe's `discount_amounts`. */
+  discount?: number;
 }
 
 function line(spec: LineSpec) {
   return {
     amount: spec.amount,
     period: { start: spec.start, end: spec.end ?? PERIOD_END },
+    // Stripe omits nothing here: a line with no coupon carries an empty array,
+    // and prorations (discountable: false) carry an empty array too. Typed as
+    // nullable so a fixture built from another invoice's real
+    // Stripe.InvoiceLineItem[] still satisfies this helper's shape.
+    discount_amounts: (spec.discount === undefined ? [] : [{ amount: spec.discount }]) as
+      | { amount: number }[]
+      | null,
     taxes:
       spec.tax === undefined
         ? null
@@ -142,6 +151,94 @@ describe('summarizePreviewInvoice', () => {
       NOW,
     );
     expect(totals.dueNowCents).toBe(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Coupons. The launch offer is a Stripe coupon and Checkout allows promotion
+  // codes, so a discounted customer is the live case, not a hypothetical.
+  //
+  // A non-proration line's `amount` is GROSS, with the coupon sitting in
+  // `discount_amounts`. Summing `amount` alone quotes the undiscounted price on
+  // the renewal line, which is also what feeds the seat dialog's headline "New
+  // monthly total" (seatCapTotalRow). THE MUTATION THESE CATCH: dropping the
+  // `- discountsOn(line)` subtraction.
+  // -------------------------------------------------------------------------
+
+  /**
+   * The same Growth to Pro upgrade as above, for a customer on a 20% repeating
+   * coupon and with tax off. The two proration lines are discountable: false, so
+   * Stripe has already netted them and their discount_amounts are empty. The
+   * next-period line is gross 169.00 with 33.80 itemised against it.
+   */
+  const COUPON_UPGRADE = invoice({
+    amountDue: 16320,
+    lines: [
+      line({ amount: -3960, start: NOW }),
+      line({ amount: 6760, start: NOW }),
+      line({ amount: 16900, start: PERIOD_END, end: NEXT_PERIOD_END, discount: 3380 }),
+    ],
+  });
+
+  it('quotes the renewal net of a coupon, not the sticker price', () => {
+    const totals = summarizePreviewInvoice(COUPON_UPGRADE, NOW);
+    // 16900 - 3380. Quoting 16900 is telling a customer 169.00 while Stripe
+    // takes 135.20.
+    expect(totals.recurringCents).toBe(13520);
+    expect(totals.recurringCents).not.toBe(16900);
+  });
+
+  it('leaves the due-now proration lines alone, which Stripe has already discounted', () => {
+    const totals = summarizePreviewInvoice(COUPON_UPGRADE, NOW);
+    // -3960 + 6760, with nothing subtracted twice.
+    expect(totals.dueNowCents).toBe(2800);
+  });
+
+  // A cycle-resetting switch bills a FULL-PERIOD line today, and a full-period
+  // line IS discountable, so the coupon has to come off the charged-today figure
+  // as well. This is the largest charge we ever make.
+  it('discounts a full-period line that is billed today', () => {
+    const totals = summarizePreviewInvoice(
+      invoice({
+        amountDue: 73365,
+        lines: [
+          line({ amount: -2475, start: NOW }),
+          line({ amount: 94800, start: NOW, end: NOW + 365 * 86_400, discount: 18960 }),
+        ],
+      }),
+      NOW,
+    );
+    // -2475 + (94800 - 18960)
+    expect(totals.dueNowCents).toBe(73365);
+    expect(totals.dueNowCents).not.toBe(92325);
+  });
+
+  it('adds exclusive tax on top of the discounted amount, the way Stripe computes it', () => {
+    const totals = summarizePreviewInvoice(
+      invoice({
+        lines: [line({ amount: 16900, start: NOW, discount: 3380, tax: 1082 })],
+      }),
+      NOW,
+    );
+    // (16900 - 3380) + 1082, where 1082 is 8% of the DISCOUNTED 13520.
+    expect(totals.dueNowCents).toBe(14602);
+    expect(totals.dueNowTaxCents).toBe(1082);
+  });
+
+  it('sums several discounts on one line', () => {
+    const totals = summarizePreviewInvoice(
+      invoice({
+        lines: [
+          {
+            amount: 10000,
+            period: { start: NOW, end: PERIOD_END },
+            discount_amounts: [{ amount: 1000 }, { amount: 500 }],
+            taxes: null,
+          } as never,
+        ],
+      }),
+      NOW,
+    );
+    expect(totals.dueNowCents).toBe(8500);
   });
 
   // Fail HIGH, never low: a customer can be surprised by a smaller bill.
