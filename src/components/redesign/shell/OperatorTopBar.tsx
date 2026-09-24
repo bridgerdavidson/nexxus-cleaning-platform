@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/redesign/notifications/NotificationBell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,7 +16,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { OrgSwitcherMenuItems } from "@/components/redesign/shared/OrgSwitcherMenuItems";
+import { TrialPill } from "@/components/redesign/billing/TrialPill";
 
 type Profile = { firstName?: string; lastName?: string; avatarUrl?: string };
 
@@ -43,6 +46,12 @@ export function OperatorTopBar({
   const { user, signOut } = useAuth() as { user: { profile?: Profile } | null; signOut: () => void };
   const profile = user?.profile;
   const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || "Operator";
+
+  // Task 12: visual-only here (aria-disabled + muted, still clickable). The
+  // actual gate lives in OperatorBookingHost, which intercepts every one of
+  // the ?newbooking=1 triggers (this button included) in one place.
+  const { uiEnabled: billingUiEnabled, access } = useBilling();
+  const newBookingFrozen = billingUiEnabled && !!access?.frozen;
 
   // Platform-correct shortcut hint, set after mount to avoid an SSR mismatch.
   const [modLabel, setModLabel] = useState("⌘K");
@@ -74,10 +83,18 @@ export function OperatorTopBar({
       </Button>
 
       <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
+        {/* Step 1 of the billing severity ladder (ruling R13). Renders null for
+            everyone outside a live trial; owner/admin only (see TrialPill). */}
+        <TrialPill />
+
         {/* Hidden (not just disabled) for a manager without can_edit_bookings: see
             OperatorShell, which only passes onNewBooking when the viewer is allowed. */}
         {onNewBooking ? (
-          <Button onClick={onNewBooking} className="hidden sm:inline-flex">
+          <Button
+            onClick={onNewBooking}
+            aria-disabled={newBookingFrozen || undefined}
+            className={cn("hidden sm:inline-flex", newBookingFrozen && "opacity-50")}
+          >
             <Plus className="h-4 w-4" aria-hidden />
             New booking
           </Button>

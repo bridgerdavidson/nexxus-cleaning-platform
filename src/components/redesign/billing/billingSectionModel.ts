@@ -1,0 +1,479 @@
+// Task 9: every decision Settings > Plan and billing makes, as pure functions.
+//
+// This is the CALM counterpart to the paywall (ruling R3): a compact summary of
+// what the customer pays, with a "Change plan" action that opens the shared
+// PlanPicker. It is deliberately not a permanent pricing table.
+//
+// The rules live here rather than in BillingSection.tsx for the same reason
+// they live in paywallModel.ts and billingBannersModel.ts: this repo has no
+// component-rendering setup and @testing-library/react is not installed, so a
+// rule left inside a .tsx file is a rule with no coverage. Eight billing
+// states times two roles is sixteen combinations, and the expensive failures
+// (an admin handed a live money control, a cancelling subscription still
+// advertising a renewal date) are invisible from the outside.
+//
+// BillingSection.tsx is a renderer over billingSectionView and actionStateFor.
+
+import type { BillingAccess, BillingState } from '@/lib/billing/access'
+import { formatBillingDate, formatCents } from '@/lib/billing/format'
+import { PLANS, planChargeCents, type BillingPeriod, type PlanTier } from '@/lib/billing/plans'
+
+// ---------------------------------------------------------------------------
+// Shapes
+// ---------------------------------------------------------------------------
+
+export type BillingCardTone = 'neutral' | 'caution' | 'critical'
+
+export type BillingActionKind =
+  | 'choose-plan'
+  | 'change-plan'
+  | 'extend'
+  | 'portal'
+  | 'update-payment'
+  | 'reactivate'
+
+export interface BillingSectionAction {
+  kind: BillingActionKind
+  label: string
+  variant: 'default' | 'outline' | 'link'
+  /**
+   * Ruling R15 v4: REMEDIATION IS NOT PURCHASE.
+   *
+   * A PURCHASE action alters what is owed (Choose a plan, Change plan, Extend
+   * your trial). Owner only. An admin sees it disabled with a reason, never
+   * hidden, because a hidden control teaches nothing. Each one maps to a
+   * server route that already refuses a non-owner (`allowedRoles: ['owner']`
+   * on /api/billing/plan and /api/billing/trial/extend), so the disabled
+   * state is honest rather than decorative.
+   *
+   * A REMEDIATION action keeps an existing agreement alive (Update payment
+   * method, Reactivate, view invoices). Every one of them opens the Stripe
+   * Customer Portal, whose route allows `['owner', 'admin']`, so both roles
+   * get it LIVE here and in the shell banner. An owner on holiday must not be
+   * able to freeze a business the admin running it day to day is powerless to
+   * rescue; an admin still cannot change the price.
+   */
+  ownerOnly: boolean
+}
+
+export interface BillingLine {
+  text: string
+  tone: 'muted' | 'caution'
+}
+
+export interface BillingCard {
+  badgeLabel: string
+  tone: BillingCardTone
+  headline: string
+  lines: BillingLine[]
+}
+
+export interface BillingNotice {
+  tone: 'critical'
+  message: string
+}
+
+export interface BillingSectionSpec {
+  lead: string
+  notice: BillingNotice | null
+  card: BillingCard
+  actions: BillingSectionAction[]
+  /**
+   * The submit label PlanPicker is mounted with, or null when this state
+   * exposes no way to open it at all (paused, comped, unpaid). Null here and
+   * an empty/portal-only `actions` list must agree; the picker has no other
+   * way to open.
+   */
+  pickerSubmitLabel: string | null
+}
+
+export type BillingSectionView =
+  | { kind: 'disabled'; message: string }
+  | { kind: 'loading' }
+  | { kind: 'unavailable'; message: string }
+  | { kind: 'plan'; spec: BillingSectionSpec }
+
+export interface BillingSectionInput {
+  /** billingEnforcementUiEnabled(). Beats every other input. */
+  uiEnabled: boolean
+  isLoading: boolean
+  access: BillingAccess | null
+  /**
+   * useBilling().canSeeBillingChrome: owner or admin. Ruling R15 draws the line
+   * between owner and admin, and `actionStateFor` reads only `isOwner`, so
+   * without this the model cannot tell an admin from a MANAGER: both are
+   * non-owners, and both would be handed a live portal button.
+   *
+   * Today the nav registry keeps managers out of this section, so it is
+   * unreachable rather than wrong. But /api/billing/state permits a manager, so
+   * the section is one registry change away from rendering for one. This is the
+   * defence in depth that makes that change safe.
+   */
+  canSeeBillingChrome: boolean
+  seatsInUse: number
+  /** organizations.plan_tier, already narrowed. Null on a trial. */
+  tier: PlanTier | null
+  period: BillingPeriod | null
+  /** organizations.seat_count. */
+  seatCount: number | null
+  /** Sibling of `billing` on useBilling(), NOT a column on OrgBillingRow. */
+  currentPeriodEnd: string | null
+  /** organizations.subscription_cancel_at. */
+  cancelAt: string | null
+  /** organizations.billing_pause_resumes_at. */
+  pauseResumesAt: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Copy and actions
+// ---------------------------------------------------------------------------
+
+export const BILLING_DISABLED_MESSAGE = 'Billing is not enabled for this account yet.'
+export const BILLING_UNAVAILABLE_MESSAGE =
+  'We could not load your plan details. Refresh the page to try again.'
+export const OWNER_ONLY_REASON = 'Only the account owner can change the plan.'
+export const PAST_DUE_NOTICE = 'We could not process your last payment.'
+export const UNPAID_NOTICE =
+  'We could not collect payment, so your account is in view-only mode.'
+
+const LEAD = 'What you pay, how many seats you use, and where to find your invoices.'
+
+const CHOOSE_PLAN: BillingSectionAction = {
+  kind: 'choose-plan', label: 'Choose a plan', variant: 'default', ownerOnly: true,
+}
+const CHANGE_PLAN: BillingSectionAction = {
+  kind: 'change-plan', label: 'Change plan', variant: 'default', ownerOnly: true,
+}
+/** past_due demotes Change plan: fixing the card comes first. */
+const CHANGE_PLAN_SECONDARY: BillingSectionAction = { ...CHANGE_PLAN, variant: 'outline' }
+const EXTEND: BillingSectionAction = {
+  kind: 'extend', label: 'Extend your trial by seven days', variant: 'link', ownerOnly: true,
+}
+// The three remediation actions. All of them open the Stripe Customer Portal
+// (BillingSection routes every kind except the picker pair and `extend`
+// through openPortal), so all three carry the portal's own audience: owner
+// AND admin. Reactivate reads like a purchase and is not one: it fixes the
+// card behind a subscription that already exists, which is why it lands in
+// the portal rather than the plan picker (`pickerSubmitLabel` is null on that
+// branch).
+const PORTAL: BillingSectionAction = {
+  kind: 'portal', label: 'Payment method and invoices', variant: 'outline', ownerOnly: false,
+}
+const UPDATE_PAYMENT: BillingSectionAction = {
+  kind: 'update-payment', label: 'Update payment method', variant: 'default', ownerOnly: false,
+}
+const REACTIVATE: BillingSectionAction = {
+  kind: 'reactivate', label: 'Reactivate', variant: 'default', ownerOnly: false,
+}
+
+/** Opening Checkout, versus editing a subscription that already exists. */
+const BUY_LABEL = 'Continue to payment'
+const UPDATE_LABEL = 'Update plan'
+
+// ---------------------------------------------------------------------------
+// Line builders
+// ---------------------------------------------------------------------------
+
+function seatsLine(seatsInUse: number, cap: number | null): BillingLine {
+  // comped has no cap (seatCap null), so it gets a bare count with no
+  // "of N" to imply a limit that does not exist.
+  if (cap === null) {
+    return { text: `${seatsInUse} ${seatsInUse === 1 ? 'seat' : 'seats'} in use`, tone: 'muted' }
+  }
+  return { text: `${seatsInUse} of ${cap} seats in use`, tone: 'muted' }
+}
+
+function trialSeatsLine(seatsInUse: number, cap: number | null): BillingLine {
+  if (cap === null) return seatsLine(seatsInUse, null)
+  return { text: `${seatsInUse} of ${cap} trial seats in use`, tone: 'muted' }
+}
+
+/**
+ * The renewal line, or null. A scheduled cancellation REPLACES the renewal
+ * date rather than sitting next to it: a subscription that ends on the 12th
+ * does not also renew on the 12th, and printing both is how a customer comes
+ * to believe they were charged after cancelling.
+ *
+ * An absent or unparseable date drops the line entirely rather than rendering
+ * "Renews on ." (same discipline as paywallCopyFor).
+ */
+function renewalLine(currentPeriodEnd: string | null, cancelAt: string | null): BillingLine | null {
+  const cancels = formatBillingDate(cancelAt)
+  if (cancels) return { text: `Cancels on ${cancels}`, tone: 'caution' }
+  const renews = formatBillingDate(currentPeriodEnd)
+  if (renews) return { text: `Renews on ${renews}`, tone: 'muted' }
+  return null
+}
+
+/**
+ * `state` matters only in the defensive, tier-less branch below: whenever
+ * `tier` is present the price is computed the same way regardless of state,
+ * because a past_due or unpaid org still owes exactly what its plan costs.
+ *
+ * Defensive: an org with no tier on the row (the webhook mirror is
+ * incomplete) cannot be priced, so this says what is true for THIS state and
+ * nothing more, rather than guessing a number or reusing `active`'s headline
+ * for a state where it is false. `past_due` is NOT frozen (dunning ends by
+ * cancelling, ruling R22, so a card failure never claims the account is
+ * view-only); `unpaid` always is (`FROZEN_STATES` in access.ts), so it is the
+ * one place "active" would be a straightforward falsehood.
+ */
+function priceHeadline(state: BillingState, tier: PlanTier | null, period: BillingPeriod | null, seatCount: number | null): string {
+  if (tier) {
+    const resolvedPeriod: BillingPeriod = period ?? 'monthly'
+    const seats = seatCount ?? PLANS[tier].includedSeats
+    const charge = planChargeCents(tier, resolvedPeriod, seats)
+    return `${formatCents(charge)} ${resolvedPeriod === 'annual' ? 'per year' : 'per month'}`
+  }
+  switch (state) {
+    case 'past_due':
+      return 'We could not confirm your plan price'
+    case 'unpaid':
+      return 'Your account is in view-only mode'
+    default:
+      return 'Your plan is active'
+  }
+}
+
+function tierBadge(tier: PlanTier | null): string {
+  return tier ? PLANS[tier].name : 'Your plan'
+}
+
+function trialHeadline(daysLeft: number | null): string {
+  const days = daysLeft ?? 0
+  return days === 1 ? '1 day left in your trial' : `${days} days left in your trial`
+}
+
+function withExtend(access: BillingAccess, actions: BillingSectionAction[]): BillingSectionAction[] {
+  // Ruling R12: the extension is a good-faith affordance, never a primary CTA,
+  // so it always trails the plan action as a link. Spec §13 (I4): it only
+  // appears once 3 or fewer days remain, the same window the banner and the
+  // paywall already honour (trial_expired's trialDaysLeft is always 0, so
+  // that state is unaffected). Offering it on day 13 of a 14-day trial let an
+  // owner burn the one-time extension for no reason.
+  if (!access.canExtendTrial) return actions
+  const days = access.trialDaysLeft
+  if (days === null || days > 3) return actions
+  return [...actions, EXTEND]
+}
+
+// ---------------------------------------------------------------------------
+// The eight branches
+// ---------------------------------------------------------------------------
+
+function specFor(input: BillingSectionInput, access: BillingAccess): BillingSectionSpec {
+  const { seatsInUse, tier, period, seatCount, currentPeriodEnd, cancelAt, pauseResumesAt } = input
+  const state: BillingState = access.state
+
+  switch (state) {
+    case 'trialing':
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: 'Trial',
+          tone: 'neutral',
+          headline: trialHeadline(access.trialDaysLeft),
+          lines: [trialSeatsLine(seatsInUse, access.seatCap)],
+        },
+        actions: withExtend(access, [CHOOSE_PLAN]),
+        pickerSubmitLabel: BUY_LABEL,
+      }
+
+    case 'trial_expired':
+      // Caution, not critical. The trial ending is definite, not a fault, and
+      // the frozen bar in the shell is already carrying the alarm.
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: 'Trial ended',
+          tone: 'caution',
+          headline: 'Your trial has ended',
+          lines: [trialSeatsLine(seatsInUse, access.seatCap)],
+        },
+        actions: withExtend(access, [CHOOSE_PLAN]),
+        pickerSubmitLabel: BUY_LABEL,
+      }
+
+    case 'active': {
+      const lines: BillingLine[] = [seatsLine(seatsInUse, access.seatCap)]
+      const renewal = renewalLine(currentPeriodEnd, cancelAt)
+      if (renewal) lines.push(renewal)
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: tierBadge(tier),
+          tone: 'neutral',
+          headline: priceHeadline(state, tier, period, seatCount),
+          lines,
+        },
+        actions: [CHANGE_PLAN, PORTAL],
+        pickerSubmitLabel: UPDATE_LABEL,
+      }
+    }
+
+    case 'past_due': {
+      // Everything active shows, plus the notice, with the actions reordered
+      // so the thing that fixes the problem is the primary one.
+      const lines: BillingLine[] = [seatsLine(seatsInUse, access.seatCap)]
+      const renewal = renewalLine(currentPeriodEnd, cancelAt)
+      if (renewal) lines.push(renewal)
+      return {
+        lead: LEAD,
+        notice: { tone: 'critical', message: PAST_DUE_NOTICE },
+        card: {
+          badgeLabel: tierBadge(tier),
+          tone: 'critical',
+          headline: priceHeadline(state, tier, period, seatCount),
+          lines,
+        },
+        actions: [UPDATE_PAYMENT, CHANGE_PLAN_SECONDARY],
+        pickerSubmitLabel: UPDATE_LABEL,
+      }
+    }
+
+    case 'unpaid':
+      // Ruling R22: defensive only. Dunning now ends by cancelling, so a
+      // lapsed customer lands in `canceled` instead and buys again through
+      // Checkout. An `unpaid` org in production means the Stripe Dashboard
+      // config has drifted. Built correctly, not designed for: the card needs
+      // fixing, not a new plan, so the only action is the portal.
+      return {
+        lead: LEAD,
+        notice: { tone: 'critical', message: UNPAID_NOTICE },
+        card: {
+          badgeLabel: tierBadge(tier),
+          tone: 'critical',
+          headline: priceHeadline(state, tier, period, seatCount),
+          lines: [seatsLine(seatsInUse, access.seatCap)],
+        },
+        actions: [REACTIVATE],
+        pickerSubmitLabel: null,
+      }
+
+    case 'canceled':
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: 'Canceled',
+          tone: 'caution',
+          headline: 'Your subscription has ended',
+          lines: [seatsLine(seatsInUse, access.seatCap)],
+        },
+        // Choosing a plan here has no live subscription to edit, so
+        // /api/billing/plan hands back a Checkout URL.
+        actions: [CHOOSE_PLAN, PORTAL],
+        pickerSubmitLabel: BUY_LABEL,
+      }
+
+    case 'paused': {
+      const until = formatBillingDate(pauseResumesAt)
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: 'Paused',
+          tone: 'caution',
+          headline: until ? `Your account is paused until ${until}.` : 'Your account is paused.',
+          // No "Contact us": there is no support route on screen (or
+          // anywhere in the product) for a customer to ask us to resume
+          // early, so that instruction was a dead one. `pauseSubscription`
+          // (src/lib/stripe/billing.ts) sets Stripe's own `resumes_at`, which
+          // really does lift the pause on its own; an open-ended pause (no
+          // date) has none, so it says only what is true there too, with no
+          // promise about when.
+          lines: [{
+            text: until
+              ? 'It resumes automatically on that date.'
+              : 'It will resume once the pause is lifted.',
+            tone: 'muted',
+          }],
+        },
+        // NO CONTROLS. The pause is ours, not theirs; selling them a plan
+        // they cannot use would be worse than saying nothing.
+        actions: [],
+        pickerSubmitLabel: null,
+      }
+    }
+
+    case 'comped':
+    default:
+      return {
+        lead: LEAD,
+        notice: null,
+        card: {
+          badgeLabel: 'Complimentary',
+          tone: 'neutral',
+          headline: 'Complimentary plan',
+          // seatCap is null for comped, so no cap is implied.
+          lines: [seatsLine(seatsInUse, access.seatCap)],
+        },
+        actions: [],
+        pickerSubmitLabel: null,
+      }
+  }
+}
+
+/**
+ * The whole section, in one decision. Precedence is strict and the flag wins
+ * outright: no billing surface may render before ops flips the UI flag, no
+ * matter what state the org is in.
+ */
+export function billingSectionView(input: BillingSectionInput): BillingSectionView {
+  if (!input.uiEnabled) return { kind: 'disabled', message: BILLING_DISABLED_MESSAGE }
+  if (input.isLoading) return { kind: 'loading' }
+  // access is null while the read is in flight AND when the read failed (a 403
+  // leaves `data` undefined). Never an empty card, never a crash.
+  if (!input.access) return { kind: 'unavailable', message: BILLING_UNAVAILABLE_MESSAGE }
+
+  const spec = specFor(input, input.access)
+
+  // A viewer who is not owner or admin keeps the card and loses every control,
+  // exactly as billingBannersModel returns null for them. Not "disabled with a
+  // reason": ruling R15 v4 draws that distinction between the OWNER and the
+  // ADMIN, both of whom this section is for. A manager is not its audience at
+  // all, so it explains what the company is on and offers nothing to click.
+  //
+  // pickerSubmitLabel goes with the actions. It is the only handle on
+  // PlanPicker, and leaving it set would mount a live plan picker for a role
+  // that has no button to open one, which is worse than either answer.
+  if (!input.canSeeBillingChrome) {
+    return { kind: 'plan', spec: { ...spec, actions: [], pickerSubmitLabel: null } }
+  }
+
+  return { kind: 'plan', spec }
+}
+
+export interface ActionState {
+  disabled: boolean
+  /** The tooltip text when disabled. Null when the control is live. */
+  reason: string | null
+}
+
+/**
+ * Ruling R15 v4. A purchase action an admin may not use is disabled with a
+ * reason, NEVER hidden: an admin who cannot find the control learns nothing,
+ * and asks the owner nothing. A remediation action (`ownerOnly: false`) is
+ * live for both roles, which is what keeps this surface and the shell banner
+ * from answering the same question two different ways.
+ *
+ * `isOwner` alone cannot tell an admin from a manager, and deliberately does
+ * not have to: billingSectionView strips the whole action list for a viewer
+ * without `canSeeBillingChrome`, so nothing this function is ever called with
+ * belongs to a manager. Keep that gate there rather than duplicating a second
+ * role rule here; one capability, one answer.
+ */
+export function actionStateFor(action: BillingSectionAction, isOwner: boolean): ActionState {
+  if (action.ownerOnly && !isOwner) return { disabled: true, reason: OWNER_ONLY_REASON }
+  return { disabled: false, reason: null }
+}
+
+/** Badge variant per card tone. Kept here so the renderer maps nothing itself. */
+export const BADGE_VARIANT_FOR_TONE: Record<BillingCardTone, 'secondary' | 'caution' | 'critical'> = {
+  neutral: 'secondary',
+  caution: 'caution',
+  critical: 'critical',
+}

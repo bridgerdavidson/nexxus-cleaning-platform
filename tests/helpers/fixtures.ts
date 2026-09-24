@@ -95,6 +95,10 @@ export interface WithTestOrgOptions {
    */
   billing?: {
     subscription_status?: string;
+    /** organizations.subscription_id. Set it to give the org a live subscription to change. */
+    subscription_id?: string | null;
+    /** organizations.stripe_customer_id, the org's BILLING customer (not its Connect account). */
+    stripe_customer_id?: string | null;
     trial_ends_at?: string | null;
     trial_extended_at?: string | null;
     comped_at?: string | null;

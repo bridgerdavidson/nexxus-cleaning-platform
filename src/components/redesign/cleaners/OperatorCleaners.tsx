@@ -2,13 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { useOrgQuery } from "@/lib/useOrgQuery";
 import { supabase } from "@/lib/supabase";
+import { keys } from "@/lib/queryKeys";
 import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SeatCapDialog } from "@/components/redesign/billing/SeatCapDialog";
+import { seatCapFallbackToast } from "@/components/redesign/billing/seatCapDialogModel";
+import { usePaywall } from "@/components/redesign/billing/usePaywall";
+import { handleBillingFrozenResponse } from "@/lib/billing/frozenResponse";
+import {
+  classifyInviteResult,
+  postDeleteSeatToastMessage,
+  seatIndicatorText,
+} from "./seatMessagingModel";
 import {
   useAdminCleanerScorecards,
   useCleanerWorkload,
@@ -195,6 +207,13 @@ export function OperatorCleanersData({
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { access, seatsInUse, uiEnabled: billingUiEnabled, billing, isOwner } = useBilling();
+  const { open: openPaywall } = usePaywall();
+  // Task 12: a frozen org's owner gets the wall on the Invite click; anyone
+  // else (admin, manager) gets a no-op click, same as every other gated
+  // "new work" button (Task 8's explanation bar already carries the reason).
+  const frozenForNewInvite = billingUiEnabled && !!access?.frozen;
   const { cleaners, loading, error, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
@@ -211,6 +230,10 @@ export function OperatorCleanersData({
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
+  // The invitee whose send hit the purchased-seat cap. Non-null == the seat
+  // dialog is open, and the value is the invite that gets retried once a seat
+  // is bought (ruling R16: never lose the invite they were writing).
+  const [seatCapInvitee, setSeatCapInvitee] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyInvite, setBusyInvite] = useState<InviteRowBusy>(null);
 
@@ -251,6 +274,26 @@ export function OperatorCleanersData({
         .filter((i) => i.role === "cleaner" && PENDING_STATUSES.includes(i.status as PendingInviteStatus))
         .map(toPendingInviteVM),
     [invites],
+  );
+
+  // Only a `pending` invite reserves a purchased seat (matches
+  // countSeatsInUse server-side); 'creating'/'failed'/'expired' rows above
+  // are shown in the roster but consume none.
+  const pendingSeatCount = useMemo(
+    () => invites.filter((i) => i.role === "cleaner" && i.status === "pending").length,
+    [invites],
+  );
+  const isTrial = billing?.plan_tier == null;
+  const seatIndicatorLabel = useMemo(
+    () =>
+      seatIndicatorText({
+        uiEnabled: billingUiEnabled,
+        access,
+        seatsInUse,
+        pendingCount: pendingSeatCount,
+        isTrial,
+      }),
+    [billingUiEnabled, access, seatsInUse, pendingSeatCount, isTrial],
   );
 
   // Keep the selection scoped to what is currently visible, so a hidden cleaner
@@ -357,6 +400,30 @@ export function OperatorCleanersData({
     [detailId, refetch],
   );
 
+  // The seat cap (ruling R16): resolved inline, in a dialog over this screen,
+  // never by sending the operator to Billing.
+  const openSeatCapDialog = useCallback(
+    (inviteeName: string) => {
+      // SeatCapDialog renders nothing when the billing UI flag is dark or
+      // billing state is unreadable. The server 409 is gated by a DIFFERENT
+      // environment variable (BILLING_ENFORCEMENT_ENABLED, not the
+      // NEXT_PUBLIC_ mirror), so the two can drift, and a silent failure here
+      // would put us straight back to the operator clicking Send invite and
+      // getting nothing at all.
+      const fallback = seatCapFallbackToast({
+        uiEnabled: billingUiEnabled,
+        access,
+        inviteeName,
+      });
+      if (fallback) {
+        toast.error(fallback);
+        return;
+      }
+      setSeatCapInvitee(inviteeName);
+    },
+    [billingUiEnabled, access],
+  );
+
   const handleInvite = useCallback(
     async (email: string): Promise<boolean> => {
       if (!currentOrganizationId) return false;
@@ -368,19 +435,56 @@ export function OperatorCleanersData({
           organizationId: currentOrganizationId,
           accessToken,
         });
-        if (r.success) {
+        const outcome = classifyInviteResult(r);
+        if (outcome.kind === "sent") {
           await refetchInvites();
           toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        toast.error(r.error || "Could not send the invite");
+        if (outcome.kind === "seat_cap") {
+          openSeatCapDialog(email);
+          return false;
+        }
+        if (outcome.kind === "frozen") {
+          // The stale-tab case: the dialog was already open when the org
+          // froze. Land on the wall instead of a toast reading the raw
+          // "billing_frozen" code (task 12, step 2).
+          handleBillingFrozenResponse();
+          return false;
+        }
+        toast.error(outcome.message);
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetchInvites],
+    [currentOrganizationId, accessToken, refetchInvites, openSeatCapDialog],
   );
+
+  // Task 12, step 1: the Invite click itself, before the dialog ever opens.
+  // A frozen owner gets the wall; anyone else (admin, manager) is a no-op,
+  // matching every other gated "new work" button.
+  const handleNewCleanerClick = useCallback(() => {
+    if (frozenForNewInvite) {
+      if (isOwner) openPaywall();
+      return;
+    }
+    setAddOpen(true);
+  }, [frozenForNewInvite, isOwner, openPaywall]);
+
+  // Called by SeatCapDialog once a seat is actually bought. Retries the exact
+  // invite that was refused, and only then closes the invite dialog behind it,
+  // so a second refusal reopens the seat dialog instead of silently dropping
+  // the address the operator typed.
+  const retryInviteAfterSeat = useCallback(() => {
+    const email = seatCapInvitee;
+    if (!email) return;
+    setSeatCapInvitee(null);
+    void (async () => {
+      const sent = await handleInvite(email);
+      if (sent) setAddOpen(false);
+    })();
+  }, [seatCapInvitee, handleInvite]);
 
   const handleInviteAction = useCallback(
     async (inviteId: string, action: InviteRowAction) => {
@@ -430,10 +534,23 @@ export function OperatorCleanersData({
     setBusy(true);
     try {
       if (kind === "remove") {
+        // Snapshotted before the delete runs: removing a cleaner member
+        // always frees exactly one purchased seat, so the post-delete count
+        // is this minus one (see postDeleteSeatToastMessage).
+        const seatsBeforeDelete = seatsInUse;
         const r = await deleteCleanerById(ids[0]);
         await refetch();
         if (r.success) {
           toast.success("Cleaner removed");
+          const seatMessage = postDeleteSeatToastMessage({
+            uiEnabled: billingUiEnabled,
+            access,
+            seatsInUseBeforeDelete: seatsBeforeDelete,
+          });
+          if (seatMessage) {
+            toast.success(seatMessage);
+            await queryClient.invalidateQueries({ queryKey: keys.billing.all });
+          }
           closeDetail();
         } else {
           toast.error(r.error || "Could not remove the cleaner");
@@ -455,7 +572,7 @@ export function OperatorCleanersData({
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, clearSelection, closeDetail]);
+  }, [confirm, refetch, clearSelection, closeDetail, seatsInUse, billingUiEnabled, access, queryClient]);
 
   const handleRowAction = useCallback(
     (id: string, action: CleanerRowAction) => {
@@ -500,6 +617,7 @@ export function OperatorCleanersData({
         onRetry={() => refetch()}
         rows={rows}
         pendingInvites={pendingInvites}
+        seatIndicatorLabel={seatIndicatorLabel}
         totalActiveCount={totalActiveCount}
         benchedCount={benchedCount}
         canViewPayments={canViewPayments}
@@ -520,7 +638,8 @@ export function OperatorCleanersData({
         onRowAction={handleRowAction}
         onInviteAction={handleInviteAction}
         onBulkDeactivate={() => setConfirm({ kind: "bulkDeactivate", ids: [...selectedIds] })}
-        onNewCleaner={() => setAddOpen(true)}
+        onNewCleaner={handleNewCleanerClick}
+        newCleanerFrozen={frozenForNewInvite}
       />
 
       <CleanerDetailSheet
@@ -549,6 +668,15 @@ export function OperatorCleanersData({
       />
 
       <AddCleanerDialog open={addOpen} onOpenChange={setAddOpen} busy={busy} onInvite={handleInvite} />
+
+      <SeatCapDialog
+        open={seatCapInvitee !== null}
+        onOpenChange={(o) => {
+          if (!o) setSeatCapInvitee(null);
+        }}
+        inviteeName={seatCapInvitee}
+        onSeatAdded={retryInviteAfterSeat}
+      />
 
       <ConfirmDialog
         open={!!confirm}

@@ -47,6 +47,8 @@ export type OperatorServicesViewProps = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onNewService: () => void;
+  /** Task 12: frozen-org visual state for the New service button(s). */
+  newServiceFrozen?: boolean;
 
   detail: ServiceDetailVM | null;
   checklists: ChecklistVM[];
@@ -71,6 +73,7 @@ export function OperatorServicesView({
   selectedId,
   onSelect,
   onNewService,
+  newServiceFrozen,
   detail,
   checklists,
   checklistsLoading,
@@ -93,7 +96,11 @@ export function OperatorServicesView({
           <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
         </div>
         {canManage ? (
-          <Button onClick={onNewService} className="shrink-0">
+          <Button
+            onClick={onNewService}
+            aria-disabled={newServiceFrozen || undefined}
+            className={cn("shrink-0", newServiceFrozen && "opacity-50")}
+          >
             <Plus /> New service
           </Button>
         ) : null}
@@ -106,7 +113,17 @@ export function OperatorServicesView({
           icon={<Tag />}
           title="No services yet"
           description="Create your first service to start taking bookings."
-          action={canManage ? <Button onClick={onNewService}><Plus /> New service</Button> : undefined}
+          action={
+            canManage ? (
+              <Button
+                onClick={onNewService}
+                aria-disabled={newServiceFrozen || undefined}
+                className={cn(newServiceFrozen && "opacity-50")}
+              >
+                <Plus /> New service
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <>

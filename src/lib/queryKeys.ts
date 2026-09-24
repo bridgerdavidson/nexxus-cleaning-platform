@@ -149,5 +149,7 @@ export const keys = {
   billing: {
     all: ['billing'] as const,
     org: (orgId: string) => ['billing', 'org', orgId] as const,
+    preview: (orgId: string, tier: string, period: string, seats: number) =>
+      ['billing', 'preview', orgId, tier, period, seats] as const,
   },
 };

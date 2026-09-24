@@ -1,6 +1,7 @@
 "use client";
 
 import { Search, Users, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,6 +63,8 @@ export type OperatorCustomersViewProps = {
   onRowAction: (id: string, action: CustomerRowAction) => void;
   onBulkDelete: () => void;
   onNewCustomer?: () => void;
+  /** Task 12: frozen-org visual state for the New customer button(s). */
+  newCustomerFrozen?: boolean;
 };
 
 export function OperatorCustomersView({
@@ -85,6 +88,7 @@ export function OperatorCustomersView({
   onRowAction,
   onBulkDelete,
   onNewCustomer,
+  newCustomerFrozen,
 }: OperatorCustomersViewProps) {
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
   const filtersActive = !!search;
@@ -108,7 +112,11 @@ export function OperatorCustomersView({
           <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
         </div>
         {showNew ? (
-          <Button onClick={onNewCustomer} className="shrink-0">
+          <Button
+            onClick={onNewCustomer}
+            aria-disabled={newCustomerFrozen || undefined}
+            className={cn("shrink-0", newCustomerFrozen && "opacity-50")}
+          >
             <Plus /> New customer
           </Button>
         ) : null}
@@ -158,7 +166,11 @@ export function OperatorCustomersView({
           }
           action={
             totalCount === 0 && showNew ? (
-              <Button onClick={onNewCustomer}>
+              <Button
+                onClick={onNewCustomer}
+                aria-disabled={newCustomerFrozen || undefined}
+                className={cn(newCustomerFrozen && "opacity-50")}
+              >
                 <Plus /> New customer
               </Button>
             ) : filtersActive ? (
