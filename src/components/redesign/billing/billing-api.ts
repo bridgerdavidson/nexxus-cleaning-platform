@@ -10,7 +10,11 @@ import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import type { BillingPeriod, PlanTier } from '@/lib/billing/plans';
 import type { BillingStatePayload } from '@/app/api/billing/state/route';
 import type { PlanPreviewPayload } from '@/app/api/billing/plan/preview/route';
-import { handleBillingFrozenResponse, isBillingFrozenResponse } from '@/lib/billing/frozenResponse';
+import {
+  BILLING_FROZEN_MESSAGE,
+  handleBillingFrozenResponse,
+  isBillingFrozenResponse,
+} from '@/lib/billing/frozenResponse';
 
 export interface PlanSelectionBody {
   tier: PlanTier;
@@ -44,12 +48,23 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
   // boundary submits a write here (e.g. changePlan / extendTrial racing a
   // freeze) and the server refuses. Land on the wall instead of throwing an
   // Error whose message is the literal string "billing_frozen" for a caller
-  // to toast. The promise below deliberately never settles: the wall is
-  // about to replace whatever screen called this, so there is no state left
-  // to resolve into, and no catch block gets a chance to surface a toast.
+  // to toast.
+  //
+  // This used to `return new Promise(() => {})`, on the reasoning that the
+  // wall was about to replace whatever called this. That held only for an
+  // OWNER (paywallGate hides the wall for everyone else), which is the exact
+  // shape src/lib/auth/apiFetch.ts's own fix already documents: an admin or
+  // manager caller got no wall, no message, and a promise that never settled,
+  // so a `finally { setBusy(false) }` never ran and a dialog stayed open over
+  // a spinner that spun forever. Every caller of `call` already has a
+  // try/catch (PlanPicker.handleSubmit, SeatCapDialog.handleConfirm,
+  // BillingBanners/BillingPaywall's handleExtend), so throwing settles
+  // safely in both directions: the non-owner's existing catch shows a
+  // friendly failure, and the owner gets the same settled rejection under a
+  // wall that covers the screen anyway.
   if (isBillingFrozenResponse(res.status, json)) {
     handleBillingFrozenResponse();
-    return new Promise<T>(() => {});
+    throw new Error(BILLING_FROZEN_MESSAGE);
   }
   if (!res.ok) throw new Error(json.error || 'Something went wrong. Please try again.');
   return json.data as T;

@@ -1,24 +1,26 @@
-// Task 12, step 2: the stale-tab 402 net inside billing-api.ts's shared
-// `call` helper, exercised through extendTrial (the simplest call() caller,
-// POST with no response payload the test needs to shape). Two properties
-// matter: a billing_frozen 402 must hand off to the wall and never resolve
-// into a caller's catch/toast, and anything else (a different error code, a
-// different status) must still behave exactly as before, so a mutation that
-// widens the check cannot silently swallow real errors.
+// Task 12, step 2 (and I6's fix pass): the stale-tab 402 net inside
+// billing-api.ts's shared `call` helper, exercised through extendTrial (the
+// simplest call() caller, POST with no response payload the test needs to
+// shape). Three properties matter: a billing_frozen 402 must hand off to the
+// wall and SETTLE (reject) rather than hang a caller's catch/toast forever;
+// the rejection must carry the friendly BILLING_FROZEN_MESSAGE, never the
+// machine string; and anything else (a different error code, a different
+// status) must still behave exactly as before, so a mutation that widens the
+// check cannot silently swallow real errors.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/auth/clientAccessToken', () => ({ getAccessToken: vi.fn() }));
-vi.mock('@/lib/billing/frozenResponse', () => ({
-  isBillingFrozenResponse: vi.fn(
-    (status: number, body: unknown) =>
-      status === 402 && !!body && typeof body === 'object' && (body as { error?: unknown }).error === 'billing_frozen',
-  ),
+// BILLING_FROZEN_MESSAGE is imported from the REAL module below (as
+// apiFetch.test.ts does) so this suite pins the sentence a caller actually
+// catches, rather than a value this file invents.
+vi.mock('@/lib/billing/frozenResponse', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/billing/frozenResponse')>()),
   handleBillingFrozenResponse: vi.fn(),
 }));
 
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
-import { handleBillingFrozenResponse } from '@/lib/billing/frozenResponse';
+import { BILLING_FROZEN_MESSAGE, handleBillingFrozenResponse } from '@/lib/billing/frozenResponse';
 import { extendTrial } from './billing-api';
 
 const token = vi.mocked(getAccessToken);
@@ -51,12 +53,34 @@ describe('billing-api call() 402 handling', () => {
     vi.unstubAllGlobals();
   });
 
-  it('on a billing_frozen 402, hands off to the wall and never resolves (no toast-able error)', async () => {
+  // ⚠ THE MUTATION THIS PAIR EXISTS TO CATCH: restoring the original
+  // `return new Promise(() => {})`. Every caller of `call` (PlanPicker's
+  // handleSubmit, SeatCapDialog's handleConfirm, the extend handlers in
+  // BillingBanners/BillingPaywall) already has a try/catch; a promise that
+  // never settles leaves that catch unreachable and any `finally { setBusy /
+  // setSubmitting(false) }` never runs. Written as a race (settledSoon)
+  // rather than a plain await, because a hanging promise is otherwise
+  // invisible to an assertion until the runner times out.
+  it('on a billing_frozen 402, hands off to the wall and SETTLES (rejects) rather than hanging', async () => {
     fetchMock.mockResolvedValue(jsonResponse(402, { error: 'billing_frozen', state: 'trial_expired' }));
     const p = extendTrial('org_1');
-    const settled = await settledSoon(p);
+    expect(await settledSoon(p)).toBe(true);
     expect(handleBillingFrozenResponse).toHaveBeenCalledTimes(1);
-    expect(settled).toBe(false);
+  });
+
+  it('on a billing_frozen 402, rejects with the friendly message, never the machine string', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(402, { error: 'billing_frozen', state: 'trial_expired' }));
+    let err: unknown;
+    try {
+      await extendTrial('org_1');
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe(BILLING_FROZEN_MESSAGE);
+    // Every caller's catch block would otherwise render this verbatim.
+    expect((err as Error).message).not.toContain('billing_frozen');
+    expect(BILLING_FROZEN_MESSAGE).not.toContain('—');
   });
 
   // Mutation target: the 402 branch swallowing every error, or every 402,
