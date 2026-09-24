@@ -8,6 +8,7 @@ import {
   paywallGate,
   reassuranceLine,
   showsPlanPicker,
+  showsUpdatePayment,
   type PaywallGateInput,
 } from './paywallModel'
 import type { BillingAccess, BillingState } from '@/lib/billing/access'
@@ -107,6 +108,18 @@ describe('showsPlanPicker', () => {
   })
 })
 
+describe('showsUpdatePayment', () => {
+  // Item 2 of the final small pass: `unpaid`'s subhead promises "Update your
+  // payment method", so exactly that state, and no other, renders the button
+  // that makes the sentence true.
+  it('renders the Update payment method button on unpaid, and nowhere else', () => {
+    expect(showsUpdatePayment('unpaid')).toBe(true)
+    for (const state of ALL_STATES.filter((s) => s !== 'unpaid')) {
+      expect(showsUpdatePayment(state), state).toBe(false)
+    }
+  })
+})
+
 describe('paywallGate', () => {
   it('shows the wall for a frozen owner with the flag on', () => {
     const gate = paywallGate(input())
@@ -120,6 +133,17 @@ describe('paywallGate', () => {
   it('shows no picker on a paused account', () => {
     const gate = paywallGate(input({ access: access('paused') }))
     expect(gate.show && gate.showPicker).toBe(false)
+  })
+
+  // Item 2 of the final small pass: the gate's `showUpdatePayment` is what
+  // BillingPaywall.tsx reads to render the button, so this is the invariant
+  // that keeps it agreeing with `showsUpdatePayment` above rather than
+  // hand-rolling the state check a second time.
+  it('shows the Update payment method button on unpaid, and no other wall state', () => {
+    for (const state of WALL_STATES) {
+      const gate = paywallGate(input({ access: access(state) }))
+      expect(gate.show && gate.showUpdatePayment, state).toBe(state === 'unpaid')
+    }
   })
 
   // Each of the next four is one deliberate mutation of the component's wiring.
@@ -364,6 +388,21 @@ describe('BillingPaywall wiring', () => {
 
   it('refreshes billing state after a trial extension, so the wall lifts itself', () => {
     expect(bodyOf('handleExtend')).toMatch(/invalidateQueries\(\{ queryKey: keys\.billing\.all \}\)/)
+  })
+
+  // Item 2 of the final small pass: the button that makes the `unpaid`
+  // subhead's "Update your payment method" true. Mutation target: dropping
+  // getPortalUrl (or the redirect) leaves the button doing nothing on click.
+  it('sends the owner to the Stripe portal to update their payment method', () => {
+    const body = bodyOf('handleUpdatePayment')
+    expect(body).toContain('getPortalUrl(orgId, window.location.href)')
+    expect(body).toMatch(/window\.location\.href = url/)
+  })
+
+  it('renders the Update payment method button only when the gate says to, never hidden by role', () => {
+    expect(code(source)).toContain('gate.showUpdatePayment ? (')
+    expect(source).toContain('Update payment method')
+    expect(source).not.toMatch(/isOwner\s*&&[^\n]*Update payment method/)
   })
 
   it('adds no query of its own for the reassurance counts', () => {

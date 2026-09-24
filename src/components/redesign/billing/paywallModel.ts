@@ -71,6 +71,18 @@ export function showsPlanPicker(state: BillingState): boolean {
   return state !== 'paused'
 }
 
+/**
+ * `unpaid`'s subhead promises "Update your payment method"; this is what
+ * makes that sentence true rather than naming a control that is not on
+ * screen. Ruling R15 v4 (remediation is not purchase) puts updating a
+ * payment method in the owner+admin audience generally, but the WALL itself
+ * is owner only regardless of state (`paywallGate` below), so there is no
+ * extra role check to make here: whoever sees this wall may click this.
+ */
+export function showsUpdatePayment(state: BillingState): boolean {
+  return state === 'unpaid'
+}
+
 export interface PaywallGateInput {
   /** NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED. Flag-dark until ops flips it. */
   uiEnabled: boolean
@@ -85,7 +97,7 @@ export interface PaywallGateInput {
 
 export type PaywallGate =
   | { show: false }
-  | { show: true; copy: PaywallCopy; showPicker: boolean }
+  | { show: true; copy: PaywallCopy; showPicker: boolean; showUpdatePayment: boolean }
 
 const HIDDEN: PaywallGate = { show: false }
 
@@ -104,7 +116,12 @@ export function paywallGate(input: PaywallGateInput): PaywallGate {
   const copy = paywallCopyFor(input.access.state, { pauseResumesAt: input.pauseResumesAt })
   if (!copy) return HIDDEN
 
-  return { show: true, copy, showPicker: showsPlanPicker(input.access.state) }
+  return {
+    show: true,
+    copy,
+    showPicker: showsPlanPicker(input.access.state),
+    showUpdatePayment: showsUpdatePayment(input.access.state),
+  }
 }
 
 /**

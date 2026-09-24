@@ -20,7 +20,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useBilling } from '@/hooks/useBilling'
 import { keys } from '@/lib/queryKeys'
 import { PlanPicker } from './PlanPicker'
-import { changePlan, extendTrial, type PlanSelectionBody } from './billing-api'
+import { changePlan, extendTrial, getPortalUrl, type PlanSelectionBody } from './billing-api'
 import {
   asBillingPeriod,
   asPlanTier,
@@ -31,6 +31,7 @@ import {
 import { syncPaywallFrozen, usePaywall } from './usePaywall'
 
 const EXTEND_ERROR = 'Could not extend your trial. Please try again.'
+const PORTAL_ERROR = 'Could not open the billing portal. Please try again.'
 
 export function BillingPaywall({ children }: { children: React.ReactNode }) {
   const { access, billing, seatsInUse, isOwner, uiEnabled } = useBilling()
@@ -40,6 +41,8 @@ export function BillingPaywall({ children }: { children: React.ReactNode }) {
   const headingId = React.useId()
   const [extending, setExtending] = React.useState(false)
   const [extendError, setExtendError] = React.useState<string | null>(null)
+  const [updatingPayment, setUpdatingPayment] = React.useState(false)
+  const [updatePaymentError, setUpdatePaymentError] = React.useState<string | null>(null)
 
   const orgId = currentOrganizationId ?? ''
   // null while billing state is loading, so the effect below stays out of the
@@ -82,6 +85,18 @@ export function BillingPaywall({ children }: { children: React.ReactNode }) {
       setExtendError(EXTEND_ERROR)
     } finally {
       setExtending(false)
+    }
+  }
+
+  async function handleUpdatePayment(): Promise<void> {
+    setUpdatePaymentError(null)
+    setUpdatingPayment(true)
+    try {
+      const url = await getPortalUrl(orgId, window.location.href)
+      window.location.href = url
+    } catch {
+      setUpdatePaymentError(PORTAL_ERROR)
+      setUpdatingPayment(false)
     }
   }
 
@@ -140,6 +155,23 @@ export function BillingPaywall({ children }: { children: React.ReactNode }) {
         <p className="text-sm font-semibold text-critical-700 dark:text-destructive">
           {extendError}
         </p>
+      ) : null}
+
+      {gate.showUpdatePayment ? (
+        // `unpaid`'s subhead says "Update your payment method"; this is the
+        // control that makes that sentence true rather than naming a button
+        // that is not on screen. Primary: fixing the card is the one thing
+        // that actually lifts this wall.
+        <div className="flex flex-col items-start gap-2">
+          <Button onClick={handleUpdatePayment} loading={updatingPayment}>
+            Update payment method
+          </Button>
+          {updatePaymentError ? (
+            <p className="text-sm font-semibold text-critical-700 dark:text-destructive">
+              {updatePaymentError}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {gate.showPicker ? (
