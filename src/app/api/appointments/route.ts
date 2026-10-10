@@ -4,6 +4,8 @@ import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { parseOperatorBookingBody } from '@/lib/appointments/parseOperatorBooking';
 import { selfPayCleanerBlockReason, type CleanerPayoutFields } from '@/lib/payments/isCleanerPayable';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
+import { loadNotificationContext } from '@/lib/notifications/context';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 export const runtime = 'nodejs';
 
@@ -27,7 +29,8 @@ const fail = (status: number, error: string) => NextResponse.json({ error }, { s
  * form shows.
  *
  * The row is inserted as pending / awaiting with a server-computed response
- * deadline. Offered slots are recorded only when more than one was given.
+ * deadline. Offered slots are recorded only when more than one was given. A
+ * picked cleaner (other than the caller) gets a cleaner_assigned notification.
  * Returns 201 { success: true, data: { id } }.
  */
 export async function POST(request: NextRequest) {
@@ -138,6 +141,21 @@ export async function POST(request: NextRequest) {
         .from('appointment_requested_slots')
         .insert(slots.map((s) => ({ appointment_id: created.id, ...s })));
       if (slotsError) console.error('appointment_requested_slots insert failed:', slotsError.message);
+    }
+
+    // The operator picked the cleaner on the form, so no assign-cleaner call
+    // follows: without this the cleaner only learns of the job by opening the
+    // app. Skipped when the operator booked themselves. Both helpers swallow
+    // their own failures, so a notification problem never fails the booking.
+    if (a.cleaner_id && a.cleaner_id !== auth.userId) {
+      const ctx = await loadNotificationContext(supabaseAdmin, { appointmentId: created.id });
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_assigned',
+        appointment_id: created.id,
+        organization_id: orgId,
+        recipient_user_id: a.cleaner_id,
+        payload: { ...ctx, audience: 'cleaner' },
+      });
     }
 
     return NextResponse.json({ success: true, data: { id: created.id as string } }, { status: 201 });

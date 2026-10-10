@@ -242,6 +242,47 @@ describe('POST /api/appointments', () => {
     expect(row).toEqual({ homeowner_id: null, is_self_pay: true, payment_method_id: null, cleaner_id: payable.cleaner.userId });
   });
 
+  describe('assigned-cleaner notification', () => {
+    const eventsFor = async (appointmentId: string) => {
+      const { data, error } = await db
+        .from('notification_events')
+        .select('event_type, recipient_user_id, organization_id, payload')
+        .eq('appointment_id', appointmentId);
+      if (error) throw error;
+      return data;
+    };
+
+    it('notifies the cleaner the operator picked, once, with the job details', async () => {
+      const res = await post(body({ cleaner_id: org.cleaner.userId }), org.admin.accessToken);
+      expect(res.status).toBe(201);
+      const events = await eventsFor(res.body.data!.id);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        event_type: 'cleaner_assigned',
+        recipient_user_id: org.cleaner.userId,
+        organization_id: org.organizationId,
+        payload: { audience: 'cleaner', scheduled_date: '2026-10-01', property_label: expect.any(String) },
+      });
+    });
+
+    it('sends nothing when no cleaner is picked yet', async () => {
+      const res = await post(body(), org.admin.accessToken);
+      expect(res.status).toBe(201);
+      expect(await eventsFor(res.body.data!.id)).toEqual([]);
+    });
+
+    it('sends nothing when the operator books the job for themselves', async () => {
+      // An owner who also cleans has a cleaner profile in their own org.
+      const { error } = await db
+        .from('cleaner_profiles')
+        .insert({ id: org.admin.userId, organization_id: org.organizationId, payout_configured_at: new Date().toISOString() });
+      if (error) throw error;
+      const res = await post(body({ cleaner_id: org.admin.userId }), org.admin.accessToken);
+      expect(res.status).toBe(201);
+      expect(await eventsFor(res.body.data!.id)).toEqual([]);
+    });
+  });
+
   describe('billing enforcement', () => {
     afterEach(() => {
       delete process.env.BILLING_ENFORCEMENT_ENABLED;

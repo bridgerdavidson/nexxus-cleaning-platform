@@ -4,6 +4,8 @@ import { generateOccurrences, validateRecurrenceInput } from '@/lib/appointments
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
 import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { jobPriceError } from '@/lib/pricing/minJobPrice';
+import { loadNotificationContext } from '@/lib/notifications/context';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -118,6 +120,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: priceError }, { status: 400 });
     }
 
+    // A picked cleaner must belong to this org: every occurrence is offered to
+    // them and they are notified with the property and schedule. Checked before
+    // the series insert, like the price, so a rejection strands nothing.
+    if (cleanerId) {
+      const { data: cleaner, error: cleanerError } = await supabaseAdmin
+        .from('cleaner_profiles')
+        .select('id, organization_id')
+        .eq('id', cleanerId)
+        .maybeSingle();
+      if (cleanerError) {
+        return NextResponse.json({ success: false, error: cleanerError.message }, { status: 500 });
+      }
+      if (!cleaner) {
+        return NextResponse.json({ success: false, error: 'Cleaner not found' }, { status: 404 });
+      }
+      if (cleaner.organization_id !== organizationId) {
+        return NextResponse.json({ success: false, error: 'Cleaner is in a different organization' }, { status: 403 });
+      }
+    }
+
     // 1. Insert the recurring series
     const { data: series, error: seriesError } = await supabaseAdmin
       .from('recurring_appointment_series')
@@ -229,6 +251,24 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // One notification for the whole series, on its first visit, so a cleaner
+    // the operator picked hears about it without opening the app. Skipped when
+    // the operator booked themselves. Both helpers swallow their own failures.
+    const visits = (appointments ?? []) as Array<{ id: string; scheduled_date: string; scheduled_time: string }>;
+    const firstVisit = visits
+      .slice()
+      .sort((x, y) => `${x.scheduled_date} ${x.scheduled_time}`.localeCompare(`${y.scheduled_date} ${y.scheduled_time}`))[0];
+    if (cleanerId && cleanerId !== auth.userId && firstVisit) {
+      const ctx = await loadNotificationContext(supabaseAdmin, { appointmentId: firstVisit.id });
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_assigned',
+        appointment_id: firstVisit.id,
+        organization_id: organizationId,
+        recipient_user_id: cleanerId,
+        payload: { ...ctx, audience: 'cleaner', series_id: series.id },
+      });
     }
 
     return NextResponse.json({

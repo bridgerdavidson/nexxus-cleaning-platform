@@ -160,6 +160,92 @@ describe('/api/recurring-appointments (auth)', () => {
     });
   });
 
+  describe('assigned cleaner', () => {
+    const db = createTestSupabaseClient();
+    type SeriesBody = { success: boolean; error?: string; data: { series: { id: string } } };
+
+    const seed = () =>
+      createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+    const postSeries = (extra: Record<string, unknown>, propertyId: string, serviceTypeId: string) =>
+      callRoute<SeriesBody>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { ...baseBody(org.organizationId, org.homeowner.userId, propertyId, serviceTypeId), ...extra },
+      });
+    const assignedEvents = async (orgId: string) => {
+      const { data, error } = await db
+        .from('notification_events')
+        .select('appointment_id, recipient_user_id, payload')
+        .eq('organization_id', orgId)
+        .eq('event_type', 'cleaner_assigned');
+      if (error) throw error;
+      return data;
+    };
+
+    it('notifies the cleaner once for the whole series, pointing at the first visit', async () => {
+      const { propertyId, serviceTypeId } = await seed();
+      const { status, body } = await postSeries({ cleanerId: org.cleaner.userId }, propertyId, serviceTypeId);
+      expect(status).toBe(200);
+
+      const { data: first } = await db
+        .from('appointments')
+        .select('id')
+        .eq('series_id', body.data.series.id)
+        .eq('scheduled_date', '2026-07-01')
+        .single();
+      const events = await assignedEvents(org.organizationId);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        appointment_id: first!.id,
+        recipient_user_id: org.cleaner.userId,
+        payload: { audience: 'cleaner', scheduled_date: '2026-07-01', series_id: body.data.series.id },
+      });
+    });
+
+    it('sends nothing for a series with no cleaner yet', async () => {
+      const { propertyId, serviceTypeId } = await seed();
+      expect((await postSeries({}, propertyId, serviceTypeId)).status).toBe(200);
+      expect(await assignedEvents(org.organizationId)).toEqual([]);
+    });
+
+    it('sends nothing when the operator books the series for themselves', async () => {
+      const { error } = await db
+        .from('cleaner_profiles')
+        .insert({ id: org.admin.userId, organization_id: org.organizationId, payout_configured_at: new Date().toISOString() });
+      if (error) throw error;
+      const { propertyId, serviceTypeId } = await seed();
+      expect((await postSeries({ cleanerId: org.admin.userId }, propertyId, serviceTypeId)).status).toBe(200);
+      expect(await assignedEvents(org.organizationId)).toEqual([]);
+    });
+
+    it('rejects a cleaner from another org or an unknown cleaner before creating anything', async () => {
+      const { propertyId, serviceTypeId } = await seed();
+
+      const foreign = await postSeries({ cleanerId: org2.cleaner.userId }, propertyId, serviceTypeId);
+      expect(foreign.status).toBe(403);
+      expect(foreign.body).toMatchObject({ success: false, error: 'Cleaner is in a different organization' });
+
+      const unknown = await postSeries({ cleanerId: '00000000-0000-4000-8000-000000000000' }, propertyId, serviceTypeId);
+      expect(unknown.status).toBe(404);
+      expect(unknown.body).toMatchObject({ success: false, error: 'Cleaner not found' });
+
+      const { data: series } = await db
+        .from('recurring_appointment_series')
+        .select('id')
+        .eq('organization_id', org.organizationId);
+      expect(series ?? []).toHaveLength(0);
+      const { data: leaked } = await db
+        .from('notification_events')
+        .select('id')
+        .eq('recipient_user_id', org2.cleaner.userId);
+      expect(leaked ?? []).toHaveLength(0);
+    });
+  });
+
   it('GET returns 401 with no Authorization header', async () => {
     const { status } = await callRoute(GET, {
       method: 'GET',
