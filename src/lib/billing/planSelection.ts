@@ -46,6 +46,42 @@ export function parsePlanSelection(body: Record<string, unknown> | null | undefi
   };
 }
 
+/**
+ * How stale a client-supplied `proration_date` may be, in seconds.
+ *
+ * Long enough for a person to read the quote and press the button, short enough
+ * that the instant is still meaningfully "the same moment" as the preview.
+ */
+export const PRORATION_DATE_MAX_AGE_S = 600;
+
+/** A little slack for clock skew between the client's quote and this server. */
+const PRORATION_DATE_MAX_SKEW_S = 60;
+
+/**
+ * The `proration_date` the client echoes back from the quote it was shown, or
+ * null to let Stripe prorate at its own instant.
+ *
+ * Stripe prorates to the second, so passing the preview's instant on the update
+ * is what makes "the number shown is the number charged" literally true rather
+ * than approximately true (Stripe's prorations guide asks for exactly this).
+ *
+ * A value outside the window is IGNORED rather than refused. It is a precision
+ * hint, not part of the purchase: a customer who left the tab open should get
+ * the change they asked for, priced at now, not a 400 they cannot act on. And
+ * ignoring is the safe direction, because it is the behaviour this route had
+ * before the field existed.
+ */
+export function parseProrationDate(
+  body: Record<string, unknown> | null | undefined,
+  nowSeconds: number,
+): number | null {
+  const value = body?.proration_date;
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value > nowSeconds + PRORATION_DATE_MAX_SKEW_S) return null;
+  if (value < nowSeconds - PRORATION_DATE_MAX_AGE_S) return null;
+  return value;
+}
+
 /** The tier's own purchasable range. Null when the count is inside it. */
 export function seatBoundsError(tier: PlanTier, seatCount: number): string | null {
   const bounds = seatBounds(tier);

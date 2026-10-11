@@ -6,10 +6,12 @@ import { ChevronLeft } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { toast } from '@/components/ui/toast';
 import { homeownerCardPickerAvailable } from '@/components/HomeownerCardPicker';
+import { useAuth } from '@/hooks/useAuth';
 import { useHomeownerProperties, useHomeownerAppointments } from '@/hooks/useHomeownerData';
 import { useServices } from '@/hooks/useServices';
 import { pickBookingDefaults } from './deriveBookingDefaults';
 import { useSavedPaymentMethods } from '../account/payment-methods/useSavedPaymentMethods';
+import { BookingUnavailableError, fetchOrgContactPhone } from '../bookingUnavailable';
 import { EMPTY_BOOKING, type BookingState } from './booking-types';
 import { addSlot, removeSlotAt, isBookableService } from './deriveBooking';
 import { useSubmitBookingRequest } from './useSubmitBookingRequest';
@@ -43,7 +45,13 @@ export function BookingFlow({
   const [serviceOpen, setServiceOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
+  // Ruling R18: set only when the send route 402s blocked. Persists on screen (unlike a
+  // toast) until the next send attempt. phone is undefined while the lookup is in flight,
+  // null once it resolves to "no number on file" (both render with the line omitted).
+  const [blocked, setBlocked] = useState(false);
+  const [blockedPhone, setBlockedPhone] = useState<string | null | undefined>(undefined);
 
+  const { currentOrganizationId } = useAuth();
   const { properties, loading: propertiesLoading } = useHomeownerProperties();
   const { services, loading: servicesLoading } = useServices();
   const { appointments } = useHomeownerAppointments();
@@ -104,10 +112,23 @@ export function BookingFlow({
   const { submit, submitting } = useSubmitBookingRequest();
 
   async function handleSend() {
+    setBlocked(false);
+    setBlockedPhone(undefined);
     try {
       await submit(state);
       setPage('sent');
     } catch (e) {
+      if (e instanceof BookingUnavailableError) {
+        // Persistent inline message, not a toast (ruling R18): a toast would disappear while
+        // this is still true. Never routed to toast.error below.
+        setBlocked(true);
+        if (currentOrganizationId) {
+          fetchOrgContactPhone(currentOrganizationId).then(setBlockedPhone);
+        } else {
+          setBlockedPhone(null);
+        }
+        return;
+      }
       toast.error('Could not send your request', {
         description: e instanceof Error ? e.message : undefined,
       });
@@ -162,6 +183,8 @@ export function BookingFlow({
                   onOpenCard={() => setCardOpen(true)}
                   onSend={handleSend}
                   submitting={submitting}
+                  blockedPhone={blocked ? (blockedPhone ?? null) : null}
+                  blocked={blocked}
                 />
               )}
             </>

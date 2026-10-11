@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/auth/clientAccessToken', () => ({ getAccessToken: vi.fn() }));
+// BILLING_FROZEN_MESSAGE is imported from the REAL module below rather than
+// stubbed here, so this suite pins the sentence a caller actually toasts.
+vi.mock('@/lib/billing/frozenResponse', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/billing/frozenResponse')>()),
+  handleBillingFrozenResponse: vi.fn(),
+}));
 
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { BILLING_FROZEN_MESSAGE, handleBillingFrozenResponse } from '@/lib/billing/frozenResponse';
 import { apiFetch } from './apiFetch';
 
 const token = vi.mocked(getAccessToken);
@@ -15,14 +22,91 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+/**
+ * True only if the promise settled (resolved or rejected) before a flushed tick.
+ *
+ * A promise that never settles is invisible to an ordinary `await`: the test
+ * would hang until the runner's timeout and report a timeout rather than the
+ * defect. Racing it against a flushed macrotask turns "never settles" into a
+ * plain boolean this suite can assert on directly.
+ */
+async function settledSoon(p: Promise<unknown>): Promise<boolean> {
+  let settled = false;
+  p.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  return settled;
+}
+
 describe('apiFetch', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
     token.mockReset();
+    vi.mocked(handleBillingFrozenResponse).mockReset();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  // Task 12, step 2: the stale-tab 402 net, shared by every owner/admin/manager
+  // caller of apiFetch (services-api.ts, bookings-api.ts, checklists-api.ts).
+  // Task 13: properties-api.ts's createPropertyApi (a homeowner "add a home"
+  // call) moved OFF apiFetch because this net opens the owner-only paywall,
+  // which must never reach a homeowner; see bookingUnavailable.ts.
+  //
+  // ⚠ THE MUTATION THIS PAIR EXISTS TO CATCH: restoring the original
+  // `return new Promise(() => {})` here. paywallGate hides the wall for anyone
+  // who is not the owner, so a hanging promise leaves an admin or a manager
+  // with a dialog that never closes, a Save spinner that never stops, and no
+  // message at all. The first assertion is the one that matters, and it is
+  // written as a race rather than an `await` precisely because a hanging
+  // promise cannot be observed any other way.
+  it('on a billing_frozen 402, SETTLES rather than hanging a non-owner caller forever', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(
+      jsonResponse(402, { error: 'billing_frozen', state: 'trial_expired', can_extend_trial: false }),
+    );
+    const p = apiFetch('/api/services', { method: 'POST', body: {} });
+    expect(await settledSoon(p)).toBe(true);
+    expect(handleBillingFrozenResponse).toHaveBeenCalledTimes(1);
+  });
+
+  it('on a billing_frozen 402, resolves a friendly failure that never leaks the machine string', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(
+      jsonResponse(402, { error: 'billing_frozen', state: 'trial_expired', can_extend_trial: false }),
+    );
+    const res = await apiFetch('/api/services', { method: 'POST', body: {} });
+    expect(res).toEqual({ success: false, error: BILLING_FROZEN_MESSAGE, status: 402 });
+    // Every caller toasts `res.error` verbatim, so the 402's own error code and
+    // the billing state that rode along with it must not appear in it.
+    expect(res.success === false && res.error).not.toContain('billing_frozen');
+    expect(res.success === false && res.error).not.toContain('trial_expired');
+    // Copy rule: no em dash in any user-facing string.
+    expect(BILLING_FROZEN_MESSAGE).not.toContain('—');
+  });
+
+  // Mutation target: widening the check to every 402, or every non-2xx,
+  // instead of guard.ts's exact billing_frozen shape. A seat-cap 409 (a real
+  // 4xx this codebase already special-cases elsewhere) and a 402 with an
+  // unrelated error code must both resolve normally and never touch the wall.
+  it('a 402 with a different error code resolves normally, untouched by the wall', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(jsonResponse(402, { error: 'some_other_reason' }));
+    const res = await apiFetch('/api/services', { method: 'POST', body: {} });
+    expect(res).toEqual({ success: false, error: 'some_other_reason', status: 402 });
+    expect(handleBillingFrozenResponse).not.toHaveBeenCalled();
+  });
+
+  it('a 409 seat-cap response resolves normally, untouched by the wall', async () => {
+    token.mockResolvedValue('tok_123');
+    fetchMock.mockResolvedValue(jsonResponse(409, { error: 'seat_cap_reached' }));
+    const res = await apiFetch('/api/admin/send-invite', { method: 'POST', body: {} });
+    expect(res).toEqual({ success: false, error: 'seat_cap_reached', status: 409 });
+    expect(handleBillingFrozenResponse).not.toHaveBeenCalled();
   });
 
   it('returns a 401 result without calling fetch when there is no session', async () => {

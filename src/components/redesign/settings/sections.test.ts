@@ -1,5 +1,5 @@
 // src/components/redesign/settings/sections.test.ts
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
 import { deriveSettingsSections, isVisibleSection, REDESIGN_SETTINGS_SECTIONS } from "./sections";
 
@@ -14,15 +14,25 @@ const perms = (o: Partial<ManagerPermissions> = {}): ManagerPermissions => ({ ..
 const ids = (role?: string, orgRole?: string, p?: ManagerPermissions) =>
   deriveSettingsSections(role, orgRole, p).map((s) => s.id);
 
+// "Plan and billing" is registered only when NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED
+// is on. The suite below asserts the FLAG-ON nav, so it stubs the flag rather
+// than relying on the unit project's env (which leaves it unset, i.e. off).
+// The flag-off nav is asserted in its own describe at the bottom of this file.
+beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED", "true"));
+afterEach(() => vi.unstubAllEnvs());
+
 describe("deriveSettingsSections", () => {
-  it("owner sees all eight sections", () => {
+  // Updated in Task 9: "billing" was added directly after "payments". The exact
+  // array is the point of this assertion (it is what catches a section leaking
+  // to the wrong role), so it is updated rather than loosened.
+  it("owner sees all nine sections", () => {
     expect(ids("admin", "owner")).toEqual([
-      "profile", "appearance", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
+      "profile", "appearance", "branding", "payments", "billing", "cancellation", "payout", "cleaner-experience", "business-hours",
     ]);
   });
   it("admin sees owner+admin sections but not owner-only (payout)", () => {
     expect(ids("admin", "admin")).toEqual([
-      "profile", "appearance", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
+      "profile", "appearance", "branding", "payments", "billing", "cancellation", "cleaner-experience", "business-hours",
     ]);
   });
   it("manager with no permissions sees only Profile and Appearance", () => {
@@ -38,6 +48,18 @@ describe("deriveSettingsSections", () => {
       "profile", "appearance",
     ]);
   });
+  it("shows billing to owner and admin but not manager or cleaner", () => {
+    expect(deriveSettingsSections(undefined, "owner").map((s) => s.id)).toContain("billing");
+    expect(deriveSettingsSections(undefined, "admin").map((s) => s.id)).toContain("billing");
+    expect(deriveSettingsSections(undefined, "manager", null).map((s) => s.id)).not.toContain("billing");
+    expect(deriveSettingsSections(undefined, "cleaner").map((s) => s.id)).not.toContain("billing");
+  });
+  // A manager with every permission still never reaches billing: it is gated by
+  // `roles`, not by a manager permission, so no permission can unlock it.
+  it("never shows billing to a manager, whatever their permissions", () => {
+    const all = Object.fromEntries(Object.keys(NONE).map((k) => [k, true])) as ManagerPermissions;
+    expect(ids("manager", "manager", all)).not.toContain("billing");
+  });
   it("groups every section as account or business", () => {
     expect(REDESIGN_SETTINGS_SECTIONS.every((s) => s.group === "account" || s.group === "business")).toBe(true);
   });
@@ -48,6 +70,11 @@ describe("isVisibleSection", () => {
     expect(isVisibleSection("branding", "admin", "owner")).toBe(true);
     expect(isVisibleSection("branding", "admin", "admin")).toBe(true);
     expect(isVisibleSection("branding", "manager", "manager", NONE)).toBe(false);
+  });
+  it("billing is visible to owners and admins but not to a manager", () => {
+    expect(isVisibleSection("billing", "admin", "owner")).toBe(true);
+    expect(isVisibleSection("billing", "admin", "admin")).toBe(true);
+    expect(isVisibleSection("billing", "manager", "manager", NONE)).toBe(false);
   });
   it("payout is hidden from admins", () => {
     expect(isVisibleSection("payout", "admin", "admin")).toBe(false);
@@ -63,5 +90,54 @@ describe("isVisibleSection", () => {
   });
   it("cleaner-experience is hidden from a manager without permission", () => {
     expect(isVisibleSection("cleaner-experience", "manager", "manager", NONE)).toBe(false);
+  });
+});
+
+// Flag-dark, the Global Constraint for this whole PR: every new UI surface
+// renders nothing until ops flips NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED.
+// Registration is where it has to happen for the NAV, because a section that is
+// registered but internally disabled still puts a new item in front of a live
+// pilot org on merge day, pointing at "Billing is not enabled for this account
+// yet." The arrays below are exact, and are the flag-on arrays above minus
+// exactly one entry.
+describe("deriveSettingsSections with the billing flag off", () => {
+  beforeEach(() => vi.stubEnv("NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED", ""));
+
+  it("owner sees the eight non-billing sections and no billing item", () => {
+    expect(ids("admin", "owner")).toEqual([
+      "profile", "appearance", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
+    ]);
+  });
+  it("admin sees seven sections and no billing item", () => {
+    expect(ids("admin", "admin")).toEqual([
+      "profile", "appearance", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
+    ]);
+  });
+  it("isVisibleSection refuses billing for the roles that would otherwise have it", () => {
+    expect(isVisibleSection("billing", "admin", "owner")).toBe(false);
+    expect(isVisibleSection("billing", "admin", "admin")).toBe(false);
+  });
+  // The flag gates ONLY billing. A gate that swept a second section out with it
+  // would be a regression the exact arrays above would catch, but this states it.
+  it("leaves every other section registered", () => {
+    expect(ids("admin", "owner")).toEqual(
+      REDESIGN_SETTINGS_SECTIONS.filter((s) => s.id !== "billing").map((s) => s.id),
+    );
+  });
+});
+
+// Task 9 context the brief flagged: `payments` already uses the CreditCard
+// glyph. Two sections in the same nav group drawing the identical icon is a
+// nav the eye cannot scan, and nothing else in the suite would catch it.
+describe("section icons", () => {
+  it("gives every section in a group a distinct icon", () => {
+    for (const group of ["account", "business"] as const) {
+      const icons = REDESIGN_SETTINGS_SECTIONS.filter((s) => s.group === group).map((s) => s.icon);
+      expect(new Set(icons).size, group).toBe(icons.length);
+    }
+  });
+  it("does not draw billing with the payments icon", () => {
+    const icon = (id: string) => REDESIGN_SETTINGS_SECTIONS.find((s) => s.id === id)!.icon;
+    expect(icon("billing")).not.toBe(icon("payments"));
   });
 });

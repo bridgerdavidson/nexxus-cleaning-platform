@@ -10,11 +10,15 @@ import { ToastProvider } from '../contexts/ToastContext';
 import AuthQueryBridge from './AuthQueryBridge';
 import AuthDebugOverlay from './AuthDebugOverlay';
 import { ImpersonationBanner } from './platform/ImpersonationBanner';
-import { makeQueryClient } from '../lib/queryClient';
+import { getQueryClient } from '../lib/queryClient';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => makeQueryClient());
+  // getQueryClient() returns one shared instance for the tab's lifetime (see
+  // queryClient.ts): the billing 402 net invalidates the billing cache from
+  // outside React (billing-api.ts, apiFetch.ts), so it needs the exact
+  // instance this provider renders with, not a fresh one.
+  const [queryClient] = useState(() => getQueryClient());
 
   // Suppress browser extension errors (React DevTools, Redux DevTools, etc.)
   useEffect(() => {

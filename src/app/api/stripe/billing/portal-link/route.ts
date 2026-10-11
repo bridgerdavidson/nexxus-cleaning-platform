@@ -10,8 +10,17 @@ export const runtime = 'nodejs';
 /**
  * GET /api/stripe/billing/portal-link?organization_id=...&return_url=...  (Scenario 3 scaffolding)
  *
- * Owner/admin gets a Stripe Customer Portal URL for their org's billing Customer (manage
- * payment method, view invoices, cancel). Ensures the billing Customer exists first.
+ * Owner/admin gets a Stripe Customer Portal URL for their org's billing Customer.
+ * Ensures the billing Customer exists first.
+ *
+ * WHICH portal they get is decided by `auth.role`, which requireOrgAuth read
+ * from `organization_members` (ruling R24): an owner gets the full portal, an
+ * admin gets the remediation portal, where the card and the invoices are
+ * reachable and Cancel subscription is not. That role is the ONLY input to the
+ * choice. Nothing about the portal variant may ever be read from the query
+ * string or the body: a client-supplied variant would hand an admin the owner
+ * portal for the asking, and this route is the only thing standing between an
+ * admin and cancelling the agreement.
  */
 export async function GET(request: NextRequest) {
   if (!stripeEnabled()) {
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const returnUrl = url.searchParams.get('return_url') || `${requireAppUrl()}/admin`;
 
-    const link = await getOrgPortalLink(supabaseAdmin, organizationId!, returnUrl);
+    const link = await getOrgPortalLink(supabaseAdmin, organizationId!, returnUrl, auth.role);
     return NextResponse.json({ success: true, url: link });
   } catch (error) {
     console.error('Error creating billing portal link:', error);

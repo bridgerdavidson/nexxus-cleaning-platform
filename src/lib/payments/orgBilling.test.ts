@@ -161,7 +161,7 @@ describe('getOrgPortalLink', () => {
   it('creates the session against our portal configuration', async () => {
     const { supabase } = fakeSupabase(liveOrg());
 
-    const url = await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin');
+    const url = await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin', 'owner');
 
     expect(url).toBe('https://billing.stripe.test/session');
     expect(resolvePortalConfiguration).toHaveBeenCalledTimes(1);
@@ -172,6 +172,32 @@ describe('getOrgPortalLink', () => {
     });
   });
 
+  // Ruling R24. Mutation target: "always resolve the default configuration".
+  // The owner portal can END the agreement; an admin sent there to fix a card
+  // would find the Cancel subscription button, which makes the owner-only rule
+  // on every purchase control decorative.
+  it('sends an owner to the full portal and an admin to the remediation portal', async () => {
+    const { supabase } = fakeSupabase(liveOrg());
+
+    await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin', 'owner');
+    expect(resolvePortalConfiguration).toHaveBeenLastCalledWith('default');
+
+    await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin', 'admin');
+    expect(resolvePortalConfiguration).toHaveBeenLastCalledWith('remediation');
+  });
+
+  // The route only admits owner and admin, but this function must not depend on
+  // that: anything that is not literally the owner gets the portal that cannot
+  // cancel. Mutation target: "treat an unrecognized role as the owner".
+  it('gives the remediation portal to every role that is not the owner', async () => {
+    const { supabase } = fakeSupabase(liveOrg());
+    for (const role of ['admin', 'manager', 'cleaner', 'homeowner', '']) {
+      resolvePortalConfiguration.mockClear();
+      await getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin', role);
+      expect(resolvePortalConfiguration, role).toHaveBeenCalledWith('remediation');
+    }
+  });
+
   // A half-configured Stripe account should fail loudly, not hand the customer a
   // portal that lets them change plans behind the app's back.
   it('does not open a session at all when no configuration is tagged', async () => {
@@ -180,9 +206,9 @@ describe('getOrgPortalLink', () => {
     );
     const { supabase } = fakeSupabase(liveOrg());
 
-    await expect(getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin')).rejects.toThrow(
-      /nexxus_portal=default/,
-    );
+    await expect(
+      getOrgPortalLink(supabase, 'org-1', 'https://app.test/admin', 'owner'),
+    ).rejects.toThrow(/nexxus_portal=default/);
     expect(createBillingPortalSession).not.toHaveBeenCalled();
   });
 });

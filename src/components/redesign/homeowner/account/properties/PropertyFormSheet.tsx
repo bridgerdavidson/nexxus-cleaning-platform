@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/drawer';
 import type { Property } from '@/hooks/useHomeownerData';
 import { PropertyPhotoField } from '@/components/redesign/properties/PropertyPhotoField';
+import { BookingUnavailableError, fetchOrgContactPhone } from '../../bookingUnavailable';
+import { HomeownerBookingBlockedNotice } from '../../HomeownerBookingBlockedNotice';
 import { createPropertyApi } from './properties-api';
 import {
   EMPTY_PROPERTY_FORM,
@@ -80,6 +82,11 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Ruling R18: set only when the create route 402s blocked (the "add a home" path). Renders
+  // a persistent notice in place of the generic error box; phone resolves separately so the
+  // notice appears immediately and the number fills in once the lookup finishes.
+  const [blocked, setBlocked] = useState(false);
+  const [blockedPhone, setBlockedPhone] = useState<string | null | undefined>(undefined);
 
   // Reset the form each time the sheet opens (from the property in edit mode).
   useEffect(() => {
@@ -87,6 +94,8 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
     setForm(property ? fromProperty(property) : EMPTY_PROPERTY_FORM);
     setPhotoUrl(property?.photo_url ?? null);
     setError(null);
+    setBlocked(false);
+    setBlockedPhone(undefined);
   }, [open, property]);
 
   const set = (k: keyof PropertyFormValues) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -102,6 +111,8 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
       return;
     }
     setError(null);
+    setBlocked(false);
+    setBlockedPhone(undefined);
     setSaving(true);
 
     const payload = {
@@ -122,14 +133,20 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
         const res = await updateProperty(property.id, { ...payload, photo_url: photoUrl });
         if (!res.success) throw new Error(res.error ?? 'Could not save the property.');
       } else {
-        const res = await createPropertyApi({ ...payload, organization_id: currentOrganizationId });
-        if (!res.success) throw new Error(res.error);
+        await createPropertyApi({ ...payload, organization_id: currentOrganizationId });
       }
       await queryClient.invalidateQueries({ queryKey: keys.properties.byHomeowner(user.id) });
       toast.success(isEdit ? 'Property updated' : 'Property added');
       onOpenChange(false);
       onSaved();
     } catch (e) {
+      if (e instanceof BookingUnavailableError) {
+        // Persistent inline notice (ruling R18), never the generic error box and never a
+        // toast: the sheet stays open so the homeowner can read it and call instead.
+        setBlocked(true);
+        fetchOrgContactPhone(currentOrganizationId).then(setBlockedPhone);
+        return;
+      }
       setError(e instanceof Error ? e.message : 'Could not save the property.');
     } finally {
       setSaving(false);
@@ -189,12 +206,14 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
             <Textarea id="pf-access" value={form.access_instructions} onChange={(e) => set('access_instructions')(e.target.value)} rows={2} placeholder="Gate code, key location, parking" />
           </div>
 
-          {error && (
+          {blocked ? (
+            <HomeownerBookingBlockedNotice phone={blockedPhone ?? null} />
+          ) : error ? (
             <div className="flex items-start gap-2 rounded-control border border-critical/30 bg-critical-50 px-3 py-2 text-sm text-critical-700">
               <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>{error}</span>
             </div>
-          )}
+          ) : null}
 
           <div className="flex flex-col gap-2 pt-1">
             <Button onClick={onSave} loading={saving} className="w-full">

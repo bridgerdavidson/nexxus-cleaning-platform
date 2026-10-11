@@ -7,6 +7,7 @@ const sessionsCreate = vi.fn();
 const subscriptionsUpdate = vi.fn();
 const subscriptionsRetrieve = vi.fn();
 const subscriptionsCancel = vi.fn();
+const invoicesCreatePreview = vi.fn();
 
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({
@@ -16,6 +17,7 @@ vi.mock('@/lib/stripe', () => ({
       sessions: { create: portalSessionsCreate },
     },
     checkout: { sessions: { create: sessionsCreate } },
+    invoices: { createPreview: invoicesCreatePreview },
     subscriptions: {
       update: subscriptionsUpdate,
       retrieve: subscriptionsRetrieve,
@@ -31,6 +33,7 @@ import {
   createBillingCheckoutSession,
   createBillingPortalSession,
   pauseSubscription,
+  previewSubscriptionChange,
   resolvePortalConfiguration,
   resolvePrices,
   resumeSubscription,
@@ -86,19 +89,64 @@ describe('resolvePrices', () => {
 describe('resolvePortalConfiguration', () => {
   beforeEach(() => { __resetBillingCaches(); configurationsList.mockReset(); });
 
-  it('picks the one tagged default', async () => {
-    configurationsList.mockResolvedValue({
-      data: [
-        { id: 'bpc_other', metadata: {} },
-        { id: 'bpc_ours', metadata: { nexxus_portal: 'default' } },
-      ],
-    });
-    expect(await resolvePortalConfiguration()).toBe('bpc_ours');
+  const bothTagged = () => ({
+    data: [
+      { id: 'bpc_other', metadata: {} },
+      { id: 'bpc_owner', metadata: { nexxus_portal: 'default' } },
+      { id: 'bpc_admin', metadata: { nexxus_portal: 'remediation' } },
+    ],
   });
 
-  it('throws when none is tagged', async () => {
+  // Mutation target (ruling R24): "resolve the default configuration whatever
+  // the variant". That hands an admin sent to fix a card the owner portal, with
+  // its Cancel subscription button.
+  it('resolves each variant to its own configuration', async () => {
+    configurationsList.mockResolvedValue(bothTagged());
+    expect(await resolvePortalConfiguration('default')).toBe('bpc_owner');
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
+  });
+
+  it('caches per variant, so one variant cannot answer for the other', async () => {
+    configurationsList.mockResolvedValue(bothTagged());
+    await resolvePortalConfiguration('default');
+    await resolvePortalConfiguration('default');
+    expect(configurationsList).toHaveBeenCalledTimes(1);
+
+    // A warmed cache for one variant must not short-circuit the other.
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
+    expect(configurationsList).toHaveBeenCalledTimes(2);
+    await resolvePortalConfiguration('remediation');
+    expect(configurationsList).toHaveBeenCalledTimes(2);
+  });
+
+  // Fails the way resolvePrices does: name the missing tag, point at the script.
+  it('throws naming the missing tag, for either variant', async () => {
     configurationsList.mockResolvedValue({ data: [{ id: 'bpc_other', metadata: {} }] });
-    await expect(resolvePortalConfiguration()).rejects.toThrow(/stripe-billing-setup/);
+    await expect(resolvePortalConfiguration('default')).rejects.toThrow(/nexxus_portal=default/);
+    await expect(resolvePortalConfiguration('default')).rejects.toThrow(/stripe-billing-setup/);
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(
+      /nexxus_portal=remediation/,
+    );
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(/stripe-billing-setup/);
+  });
+
+  // An account set up before R24 has the owner portal and not the admin one.
+  // Half-configured must fail loudly rather than fall back to the one that can
+  // cancel, so the operator runs the script instead of shipping the hole.
+  it('never falls back to the other variant when only one is configured', async () => {
+    configurationsList.mockResolvedValue({
+      data: [{ id: 'bpc_owner', metadata: { nexxus_portal: 'default' } }],
+    });
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow(
+      /nexxus_portal=remediation/,
+    );
+  });
+
+  it('does not cache a failure', async () => {
+    configurationsList.mockResolvedValueOnce({ data: [] });
+    await expect(resolvePortalConfiguration('remediation')).rejects.toThrow();
+    configurationsList.mockResolvedValueOnce(bothTagged());
+    expect(await resolvePortalConfiguration('remediation')).toBe('bpc_admin');
   });
 });
 
@@ -157,6 +205,30 @@ describe('createBillingCheckoutSession payload', () => {
   it('never pins payment_method_types, so Stripe picks eligible methods from Dashboard settings', async () => {
     await createBillingCheckoutSession(checkoutInput());
     expect('payment_method_types' in createdParams()).toBe(false);
+  });
+
+  // Ruling R20. The ops checklist sends Bridger to the Dashboard screen where
+  // Apple Pay and Google Pay are switched on; ACH Direct Debit lives on the
+  // same screen, and because we pass no payment_method_types, one click there
+  // would enable it in production with no code change. An ACH subscription
+  // reports `active` after a failed debit, which deriveBillingAccess reads as
+  // proof of payment, so the paywall would unfreeze an org it could never
+  // re-freeze.
+  //
+  // BOTH assertions are load-bearing. "Fixing" this by pinning
+  // payment_method_types: ['card'] would exclude ACH and pass the first
+  // assertion while silently killing the wallets, so the second one pins the
+  // absence that keeps dynamic payment methods on.
+  it('excludes ACH so a Dashboard toggle cannot silently enable it', async () => {
+    await createBillingCheckoutSession(checkoutInput());
+    const params = createdParams();
+    expect(params.excluded_payment_method_types).toEqual(['us_bank_account']);
+    expect('payment_method_types' in params).toBe(false);
+  });
+
+  it('excludes ACH whether or not automatic tax is on', async () => {
+    await createBillingCheckoutSession(checkoutInput({ automaticTax: true }));
+    expect(createdParams().excluded_payment_method_types).toEqual(['us_bank_account']);
   });
 
   it('never sends trial_period_days: the app owns the trial and it is over by checkout', async () => {
@@ -234,6 +306,41 @@ describe('updateSubscriptionItems payload', () => {
   it('never pins payment_method_types on the update either', async () => {
     await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
     expect('payment_method_types' in updatedParams()).toBe(false);
+  });
+
+  // Stripe prorates to the second and its prorations guide says to send the
+  // SAME proration_date on the update that the preview was given. Without it
+  // the two evaluate at different instants and the quoted amount is not quite
+  // the charged amount.
+  it('pins the proration instant the quote was priced at', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: true,
+      prorationDate: 1_790_000_000,
+    });
+    expect(updatedParams().proration_date).toBe(1_790_000_000);
+  });
+
+  it('pins it on the non-invoicing path too, where the credit is minted', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: false,
+      prorationDate: 1_790_000_000,
+    });
+    expect(updatedParams().proration_date).toBe(1_790_000_000);
+  });
+
+  it('omits proration_date entirely when the caller has none', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', { invoiceNow: true });
+    // Present-and-undefined would still be sent as a key; Stripe must fall back
+    // to its own instant, which needs the key ABSENT.
+    expect('proration_date' in updatedParams()).toBe(false);
+  });
+
+  it('omits proration_date when the caller passes null', async () => {
+    await updateSubscriptionItems('sub_1', items, 'org-1', {
+      invoiceNow: true,
+      prorationDate: null,
+    });
+    expect('proration_date' in updatedParams()).toBe(false);
   });
 });
 
@@ -316,5 +423,93 @@ describe('cancel payloads', () => {
     await cancelStripeSubscription('sub_1');
     expect(subscriptionsCancel).toHaveBeenCalledWith('sub_1');
     expect(subscriptionsUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Preview. The route mocks this module, so these are the only tests that see
+// the parameters, and each one is a decision the customer feels: a missing
+// automatic_tax quotes a total the Stripe page then exceeds, and a missing
+// proration_date lets the same request price differently twice in a row.
+// ---------------------------------------------------------------------------
+
+describe('previewSubscriptionChange payload', () => {
+  const items = [{ id: 'si_base', price: 'p_gm' }];
+
+  beforeEach(() => {
+    invoicesCreatePreview.mockReset();
+    invoicesCreatePreview.mockResolvedValue({ id: 'in_preview', amount_due: 3780 });
+  });
+
+  const params = () => invoicesCreatePreview.mock.calls[0][0] as Record<string, unknown>;
+  const subDetails = () =>
+    params().subscription_details as Record<string, unknown>;
+
+  it('previews the subscription with the diffed items and a pinned proration date', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1_700_000_000,
+      automaticTax: false,
+    });
+    expect(params().subscription).toBe('sub_1');
+    expect(subDetails().items).toEqual(items);
+    expect(subDetails().proration_date).toBe(1_700_000_000);
+  });
+
+  // always_invoice would not isolate the immediate charge anyway: the preview
+  // returns the UPCOMING invoice either way, and the route splits its lines.
+  it('always prorates with create_prorations', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: false,
+    });
+    expect(subDetails().proration_behavior).toBe('create_prorations');
+  });
+
+  it('asks for tax only when the caller says the flag is on', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect(params().automatic_tax).toEqual({ enabled: true });
+  });
+
+  it('omits automatic_tax entirely when the flag is off, rather than sending false', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: false,
+    });
+    expect('automatic_tax' in params()).toBe(false);
+  });
+
+  // subscription already identifies the customer; readLiveSubscription has no
+  // customer id to give, and passing a wrong one would price someone else.
+  it('never passes a customer', async () => {
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect('customer' in params()).toBe(false);
+  });
+
+  it('creates no invoice and updates no subscription', async () => {
+    subscriptionsUpdate.mockReset();
+    await previewSubscriptionChange({
+      subscriptionId: 'sub_1',
+      items,
+      prorationDate: 1,
+      automaticTax: true,
+    });
+    expect(subscriptionsUpdate).not.toHaveBeenCalled();
+    expect(invoicesCreatePreview).toHaveBeenCalledTimes(1);
   });
 });

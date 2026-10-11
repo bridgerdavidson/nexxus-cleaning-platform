@@ -5,16 +5,21 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 /**
  * PATCH /api/organizations/:orgId/profile
  *
- * Owner-only org billing/payout fields: billing_email, default_payout_model.
- * default_payout_model is validated server-side so a stale or hand-rolled
- * client can't write a model the rest of the system can't honor.
+ * Owner-only org billing/payout fields: billing_email, default_payout_model,
+ * contact_phone. default_payout_model is validated server-side so a stale or
+ * hand-rolled client can't write a model the rest of the system can't honor.
+ *
+ * contact_phone (migration 20260924175746) is the public number shown to a
+ * homeowner on the blocked-booking screen (ruling R18) when their cleaning
+ * company's account is frozen. It is deliberately separate from
+ * user_profiles.phone, a named individual's personal number.
  *
  * The company name moved to the branding route (it is display identity, edited
  * by owner OR admin next to the logos it falls back to). logo_url was removed
  * outright: the legacy paste-a-URL column was superseded by the branding
  * uploads and was rendered nowhere.
  *
- * Body (all optional, at least one required): { billing_email, default_payout_model }.
+ * Body (all optional, at least one required): { billing_email, default_payout_model, contact_phone }.
  */
 const PAYOUT_MODELS = ['percentage', 'flat', 'request', 'hourly_external'] as const;
 type PayoutModel = (typeof PAYOUT_MODELS)[number];
@@ -38,6 +43,7 @@ export async function PATCH(
     const body = (await request.json().catch(() => ({}))) as {
       billing_email?: string | null;
       default_payout_model?: string;
+      contact_phone?: string | null;
     };
 
     const update: Record<string, unknown> = {};
@@ -79,6 +85,17 @@ export async function PATCH(
       // default, so the unified spelling is written directly. (117's PR wrote
       // the legacy spelling through the constraint-widening deploy window.)
       update.default_payout_model = m;
+    }
+
+    if (body.contact_phone !== undefined) {
+      const trimmed = body.contact_phone === null ? '' : String(body.contact_phone).trim();
+      if (trimmed && trimmed.length > 32) {
+        return NextResponse.json(
+          { error: 'contact_phone must be 32 characters or fewer' },
+          { status: 400 },
+        );
+      }
+      update.contact_phone = trimmed || null;
     }
 
     if (Object.keys(update).length === 0) {

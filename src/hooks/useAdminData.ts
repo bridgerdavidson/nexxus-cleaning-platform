@@ -2263,6 +2263,22 @@ export async function deleteTeamMember(userId: string, organizationId: string) {
 }
 
 
+/**
+ * Result of a send-invite call. `status` and `body` carry the raw HTTP status
+ * and parsed JSON through untouched (not collapsed into `error`), so a caller
+ * that needs to distinguish a specific error shape (e.g. the seat-cap 409,
+ * see seatMessagingModel.ts's classifyInviteResult) can do so without a
+ * second request. Both are absent on a network-level failure (the fetch
+ * itself threw, so there is no response to describe).
+ */
+export interface InviteTeamMemberResult {
+  success: boolean;
+  error?: string;
+  data?: unknown;
+  status?: number;
+  body?: unknown;
+}
+
 // Helper function to invite a team member
 export async function inviteTeamMember(data: {
   email: string;
@@ -2270,7 +2286,7 @@ export async function inviteTeamMember(data: {
   organizationId: string;
   accessToken: string | null | undefined;
   permissions?: ManagerPermissions;
-}) {
+}): Promise<InviteTeamMemberResult> {
   try {
 
     const { accessToken, ...rest } = data;
@@ -2290,10 +2306,12 @@ export async function inviteTeamMember(data: {
       return {
         success: false,
         error: result.error || 'Failed to invite team member',
+        status: response.status,
+        body: result,
       };
     }
 
-    return { success: true, data: result.data };
+    return { success: true, data: result.data, status: response.status, body: result };
   } catch (error) {
     return {
       success: false,

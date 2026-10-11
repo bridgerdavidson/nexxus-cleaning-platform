@@ -7,6 +7,7 @@ import type { Property } from '@/hooks/useHomeownerData';
 import type { ServiceType } from '@/hooks/useServices';
 import type { SavedPaymentMethod } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import { paymentMethodTitle } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
+import { HomeownerBookingBlockedNotice } from '../HomeownerBookingBlockedNotice';
 import type { BookingState } from './booking-types';
 import { canSend, formatSlotLabel, slotOrdinal, bookingTotal } from './deriveBooking';
 
@@ -23,6 +24,10 @@ export interface BookingReviewViewProps {
   onOpenCard: () => void;
   onSend: () => void;
   submitting: boolean;
+  /** Ruling R18: the last send attempt 402'd because the company can't take new online
+   *  bookings right now. Renders a persistent inline notice instead of the send toast. */
+  blocked: boolean;
+  blockedPhone: string | null;
 }
 
 function SummaryLine({ label, children }: { label: string; children: React.ReactNode }) {
@@ -43,6 +48,8 @@ export function BookingReviewView({
   onOpenCard,
   onSend,
   submitting,
+  blocked,
+  blockedPhone,
 }: BookingReviewViewProps) {
   const total = service ? bookingTotal(service.base_price, state.method) : null;
 
@@ -125,7 +132,8 @@ export function BookingReviewView({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-border bg-card px-5 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+      <div className="shrink-0 space-y-2.5 border-t border-border bg-card px-5 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        {blocked ? <HomeownerBookingBlockedNotice phone={blockedPhone} /> : null}
         <Button
           className="w-full"
           loading={submitting}

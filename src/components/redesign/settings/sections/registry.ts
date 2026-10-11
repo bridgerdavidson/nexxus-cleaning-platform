@@ -5,6 +5,7 @@ import { ProfileSection } from "./ProfileSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { BrandingSection } from "./BrandingSection";
 import { PaymentsSection } from "./PaymentsSection";
+import { BillingSection } from "./BillingSection";
 import { CancellationSection } from "./CancellationSection";
 import { PayoutSettingsSection } from "./PayoutSettingsSection";
 import { CleanerExperienceSection } from "./CleanerExperienceSection";
@@ -15,6 +16,7 @@ export const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   appearance: AppearanceSection,
   branding: BrandingSection,
   payments: PaymentsSection,
+  billing: BillingSection,
   cancellation: CancellationSection,
   payout: PayoutSettingsSection,
   "cleaner-experience": CleanerExperienceSection,

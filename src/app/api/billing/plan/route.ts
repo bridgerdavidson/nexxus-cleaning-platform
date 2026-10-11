@@ -26,58 +26,15 @@ import {
 import { countSeatsInUse } from '@/lib/billing/seats';
 import { diffSubscriptionItems } from '@/lib/billing/diffSubscriptionItems';
 import { readCurrentItems } from '@/lib/billing/readCurrentItems';
-import { parsePlanSelection, seatBoundsError, seatsInUseError } from '@/lib/billing/planSelection';
 import {
-  PLAN_TIERS,
-  planChargeCents,
-  type BillingPeriod,
-  type PlanTier,
-} from '@/lib/billing/plans';
+  parsePlanSelection,
+  parseProrationDate,
+  seatBoundsError,
+  seatsInUseError,
+} from '@/lib/billing/planSelection';
+import { shouldInvoiceNow } from '@/lib/billing/planDirection';
 
 export const runtime = 'nodejs';
-
-/**
- * Does this change have to be invoiced NOW, or does it ride the next invoice?
- *
- * The rule is one comparison of what Stripe charges per cycle, which reproduces
- * the whole policy table:
- *
- *   | change                              | charge moves | invoice now |
- *   | tier or seats UP                    | up           | yes         |
- *   | tier or seats DOWN                  | down         | no          |
- *   | monthly to annual (buying a year)   | up           | yes         |
- *   | annual to monthly                   | down         | no          |
- *   | same charge (a seat shuffle)        | flat         | no          |
- *
- * Anything that raises the charge is billed immediately, because
- * `create_prorations` writes the proration lines without invoicing them: the
- * money would otherwise wait for the next scheduled invoice, which on an annual
- * plan is up to a year away. Anything that lowers it is left as a credit on the
- * next invoice; we never refund cash for a downgrade.
- *
- * A stored plan we cannot read is treated as an upgrade, which fails toward
- * charging rather than toward giving away service.
- */
-function shouldInvoiceNow(
-  stored: { planTier: string | null; billingPeriod: string | null; seatCount: number | null },
-  target: { tier: PlanTier; period: BillingPeriod; seatCount: number },
-): boolean {
-  const tier = stored.planTier as PlanTier | null;
-  const period = stored.billingPeriod as BillingPeriod | null;
-  const seats = stored.seatCount;
-
-  const readable =
-    tier != null &&
-    PLAN_TIERS.includes(tier) &&
-    (period === 'monthly' || period === 'annual') &&
-    typeof seats === 'number' &&
-    Number.isFinite(seats);
-  if (!readable) return true;
-
-  const currentCents = planChargeCents(tier, period, seats);
-  const targetCents = planChargeCents(target.tier, target.period, target.seatCount);
-  return targetCents > currentCents;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -157,12 +114,22 @@ export async function POST(request: NextRequest) {
     const prices = await resolvePrices();
     const items = diffSubscriptionItems(current, { tier, period, seatCount }, prices);
 
-    // PR F's preview endpoint MUST use this same direction logic, or the amount it
-    // quotes will not match the amount charged. Extract this into a shared helper
-    // when that endpoint lands.
+    // Shared with POST /api/billing/plan/preview, which has to quote the amount
+    // this call charges. See src/lib/billing/planDirection.ts (ruling R23).
     const invoiceNow = shouldInvoiceNow(live, { tier, period, seatCount });
 
-    await updateSubscriptionItems(subscriptionId, items, organizationId, { invoiceNow });
+    // The instant the quote on screen was priced at, echoed back by the client
+    // from /plan/preview. Stripe prorates to the second, and its prorations
+    // guide asks for the same proration_date on the update, so this is what
+    // makes the amount charged the amount that was shown rather than a number
+    // recomputed a few seconds later. Null (absent, malformed, or stale) falls
+    // back to Stripe's own instant, which is what this route did before.
+    const prorationDate = parseProrationDate(body, Math.floor(Date.now() / 1000));
+
+    await updateSubscriptionItems(subscriptionId, items, organizationId, {
+      invoiceNow,
+      prorationDate,
+    });
 
     // Mirror immediately so the UI does not lag; the customer.subscription.updated
     // webhook is the real source of truth and overwrites these within seconds.

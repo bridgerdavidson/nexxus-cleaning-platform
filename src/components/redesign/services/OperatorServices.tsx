@@ -5,10 +5,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useBilling } from "@/hooks/useBilling";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { jobPriceError } from "@/lib/pricing/minJobPrice";
+import { usePaywall } from "@/components/redesign/billing/usePaywall";
 import {
   useServices,
   createService,
@@ -126,6 +128,12 @@ export function OperatorServices() {
 function OperatorServicesData({ canManage }: { canManage: boolean }) {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? "";
+  const { access, uiEnabled: billingUiEnabled, isOwner } = useBilling();
+  const { open: openPaywall } = usePaywall();
+  // Task 12: a frozen org's owner gets the wall on the New service click;
+  // anyone else (admin, manager) is a no-op, same as every other gated "new
+  // work" button (Task 8's explanation bar already carries the reason).
+  const frozenForNewService = billingUiEnabled && !!access?.frozen;
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -184,6 +192,16 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     id: string; name: string; itemCount: number;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Task 12, step 1: the New service click itself, before the dialog ever
+  // opens.
+  const handleNewServiceClick = useCallback(() => {
+    if (frozenForNewService) {
+      if (isOwner) openPaywall();
+      return;
+    }
+    setServiceDialog({ mode: "create" });
+  }, [frozenForNewService, isOwner, openPaywall]);
 
   // --- derived lists / view-models ---
   const derivedServices = useMemo(
@@ -542,7 +560,8 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         onStatusChange={setStatus}
         selectedId={selectedId}
         onSelect={onSelect}
-        onNewService={() => setServiceDialog({ mode: "create" })}
+        onNewService={handleNewServiceClick}
+        newServiceFrozen={frozenForNewService}
         detail={detail}
         checklists={checklistVMs}
         checklistsLoading={!!selectedId && checklistsLoading}
